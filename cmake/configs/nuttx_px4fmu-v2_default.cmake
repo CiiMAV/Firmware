@@ -15,7 +15,7 @@ set(config_module_list
 	drivers/boards
 	drivers/rgbled
 	drivers/mpu6000
-	drivers/mpu9250
+	#drivers/mpu9250
 	drivers/lsm303d
 	drivers/l3gd20
 	drivers/hmc5883
@@ -23,6 +23,7 @@ set(config_module_list
 	#drivers/mb12xx
 	#drivers/srf02
 	drivers/sf0x
+	drivers/sf1xx
 	drivers/ll40ls
 	drivers/teraranger
 	drivers/gps
@@ -156,7 +157,7 @@ set(config_module_list
 	#
 	# OBC challenge
 	#
-	#modules/bottle_drop
+	#examples/bottle_drop
 
 	#
 	# Rover apps

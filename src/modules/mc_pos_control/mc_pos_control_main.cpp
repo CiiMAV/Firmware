@@ -254,7 +254,9 @@ private:
 		float slow_land_alt1;
 		float slow_land_alt2;
 		int32_t alt_mode;
-		int32_t opt_recover;
+
+		bool opt_recover;
+
 		float rc_flt_smp_rate;
 		float rc_flt_cutoff;
 
@@ -297,8 +299,6 @@ private:
 	// they are used to identify a reset event
 	uint8_t _z_reset_counter;
 	uint8_t _xy_reset_counter;
-	uint8_t _vz_reset_counter;
-	uint8_t _vxy_reset_counter;
 	uint8_t _heading_reset_counter;
 
 	matrix::Dcmf _R_setpoint;
@@ -471,8 +471,6 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_takeoff_vel_limit(0.0f),
 	_z_reset_counter(0),
 	_xy_reset_counter(0),
-	_vz_reset_counter(0),
-	_vxy_reset_counter(0),
 	_heading_reset_counter(0)
 {
 	/* Make the attitude quaternion valid */
@@ -532,7 +530,6 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params_handles.hold_max_xy = param_find("MPC_HOLD_MAX_XY");
 	_params_handles.hold_max_z = param_find("MPC_HOLD_MAX_Z");
 	_params_handles.alt_mode = param_find("MPC_ALT_MODE");
-	_params_handles.opt_recover = param_find("VT_OPT_RECOV_EN");
 	_params_handles.rc_flt_cutoff = param_find("RC_FLT_CUTOFF");
 	_params_handles.rc_flt_smp_rate = param_find("RC_FLT_SMP_RATE");
 
@@ -659,7 +656,11 @@ MulticopterPositionControl::parameters_update(bool force)
 		param_get(_params_handles.alt_mode, &v_i);
 		_params.alt_mode = v_i;
 
-		param_get(_params_handles.opt_recover, &_params.opt_recover);
+		if (_vehicle_status.is_vtol) {
+			int32_t i = 0;
+			param_get(_params_handles.opt_recover, &i);
+			_params.opt_recover = (i == 1);
+		}
 
 		/* mc attitude control parameters*/
 		/* manual control scale */
@@ -717,6 +718,9 @@ MulticopterPositionControl::poll_subscriptions()
 		if (!_attitude_setpoint_id) {
 			if (_vehicle_status.is_vtol) {
 				_attitude_setpoint_id = ORB_ID(mc_virtual_attitude_setpoint);
+
+				_params_handles.opt_recover = param_find("VT_OPT_RECOV_EN");
+				parameters_update(true);
 
 			} else {
 				_attitude_setpoint_id = ORB_ID(vehicle_attitude_setpoint);
@@ -778,32 +782,18 @@ MulticopterPositionControl::poll_subscriptions()
 		// since we want the vehicle to track the original state.
 		if (_control_mode.flag_control_manual_enabled) {
 			if (_z_reset_counter != _local_pos.z_reset_counter) {
-				_pos_sp(2) += _local_pos.delta_z;
+				_pos_sp(2) = _local_pos.z;
 			}
 
 			if (_xy_reset_counter != _local_pos.xy_reset_counter) {
-				_pos_sp(0) += _local_pos.delta_xy[0];
-				_pos_sp(1) += _local_pos.delta_xy[1];
-			}
-
-			if (_vz_reset_counter != _local_pos.vz_reset_counter) {
-				_vel_sp(2) += _local_pos.delta_vz;
-				_vel_sp_prev(2) +=  _local_pos.delta_vz;
-			}
-
-			if (_vxy_reset_counter != _local_pos.vxy_reset_counter) {
-				_vel_sp(0) += _local_pos.delta_vxy[0];
-				_vel_sp(1) += _local_pos.delta_vxy[1];
-				_vel_sp_prev(0) += _local_pos.delta_vxy[0];
-				_vel_sp_prev(1) += _local_pos.delta_vxy[1];
+				_pos_sp(0) = _local_pos.x;
+				_pos_sp(1) = _local_pos.y;
 			}
 		}
 
 		// update the reset counters in any case
 		_z_reset_counter = _local_pos.z_reset_counter;
 		_xy_reset_counter = _local_pos.xy_reset_counter;
-		_vz_reset_counter = _local_pos.vz_reset_counter;
-		_vxy_reset_counter = _local_pos.vxy_reset_counter;
 	}
 
 	orb_check(_pos_sp_triplet_sub, &updated);
@@ -1480,14 +1470,6 @@ MulticopterPositionControl::control_non_manual(float dt)
 
 		/* AUTO */
 		control_auto(dt);
-	}
-
-	/* weather-vane mode for vtol: disable yaw control */
-	if (_vehicle_status.is_vtol) {
-		_att_sp.disable_mc_yaw_control = _pos_sp_triplet.current.disable_mc_yaw_control;
-
-	} else {
-		_att_sp.disable_mc_yaw_control = false;
 	}
 
 	// guard against any bad velocity values
@@ -2898,7 +2880,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		_att_sp.yaw_body += euler_sp(2);
 
 		/* only if optimal recovery is not used, modify roll/pitch */
-		if (_params.opt_recover <= 0) {
+		if (!(_vehicle_status.is_vtol && _params.opt_recover)) {
 			// construct attitude setpoint rotation matrix. modify the setpoints for roll
 			// and pitch such that they reflect the user's intention even if a yaw error
 			// (yaw_sp - yaw) is present. In the presence of a yaw error constructing a rotation matrix
@@ -3031,7 +3013,6 @@ MulticopterPositionControl::task_main()
 
 		/* set default max velocity in xy to vel_max */
 		_vel_max_xy = _params.vel_max_xy;
-
 
 		/* reset flags when landed */
 		if (_vehicle_land_detected.landed) {
