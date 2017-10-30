@@ -64,6 +64,7 @@ TiltBodyByVectoring::TiltBodyByVectoring() :
 	_nonfinite_output_perf(perf_alloc(PC_COUNT, "gnda_nano")),	
 	_actuators_0_circuit_breaker_enabled(false)	
 {
+	_opt_recovery = new TailsitterRecovery();
 	_parameter_handles.bat_scale_en = param_find("TBBV_BAT_SCA_EN");
 
 	/* fetch initial parameter values */
@@ -91,6 +92,8 @@ TiltBodyByVectoring::~TiltBodyByVectoring()
 			}
 		} while (_control_task != -1);
 	}
+
+	delete _opt_recovery;
 
 	perf_free(_loop_perf);
 	perf_free(_nonfinite_input_perf);
@@ -166,61 +169,27 @@ void
 TiltBodyByVectoring::attitude_control(float dt)
 {	
 	/* get current rotation matrix from control state quaternions */
-	matrix::Quaternionf q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
-	matrix::Dcmf R_est(q_att); // Rotate form frame 2 to 1 //but simulink use 1 to 2
+	math::Quaternion q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
 	
-	R_est = R_est.transpose(); // Rotate form frame 1 to 2 //same as simulink
+	math::Quaternion q_sp(1.0f,0.0f,0.0f,0.0f);
 
-	matrix::SquareMatrix<float, 3> I;
-	I = matrix::eye<float, 3>();
-	
-	matrix::Dcmf R_des(I); // Rotate form frame 1 to 2 //same as simulink
-	R_des = R_des.transpose(); //form 1 to 2 (inverse)
+	math::Vector<3> att_p(4.0f,4.0f,4.0f) ;
 
-	//R_est * R_des form 1 to 2
-	matrix::Dcmf R_diff( R_est * R_des ); // Rotate form frame 1 to 2
+	math::Vector<3> _rates_sp;
 
-	R_diff = R_diff.transpose(); // Rotate form frame 2 to 1
+	_rates_sp.zero();
+	_opt_recovery->setAttGains(att_p, 0.0f);
+	_opt_recovery->calcOptimalRates(q_att, q_sp, 0.0f, _rates_sp);
 
-	matrix::AxisAnglef rotation_des(R_diff); // form 2 to 1
-	rotation_des = - rotation_des ;
-	/*math::Matrix<3, 3> R_est = q_att.to_dcm();
-	
-	math::Matrix<3, 3> R_des ;
-	R_des(0,0) = 0.0f;
-	R_des(0,1) = 0.0f;
-	R_des(0,2) = 0.0f;
-	R_des(1,0) = 0.0f;
-	R_des(1,1) = 0.0f;
-	R_des(1,2) = 0.0f;
-	R_des(2,0) = 0.0f;
-	R_des(2,1) = 0.0f;
-	R_des(2,2) = 0.0f;
-	R_des = R_des.transposed();
-	math::Matrix<3, 3> R_diff = R_est * R_des ;
-	math::Vector<3> rotation_angle = matrix::AxisAngle( R_diff ) ; 
-	*/
-	float att_roll_tc  = 0.1f;
-	float att_pitch_tc = 0.1f;
-	float att_yaw_tc   = 0.1f;
-	
-	{
-		/* Future PID controller */
-	}
-
-	_v_rates_sp.roll  = -rotation_des(0)/att_roll_tc  ;
-	_v_rates_sp.pitch = -rotation_des(1)/att_pitch_tc ;
-	_v_rates_sp.yaw   = -rotation_des(2)/att_yaw_tc   ;
+	_v_rates_sp.roll = _rates_sp(0) ;
+	_v_rates_sp.pitch = _rates_sp(1) ;
+	_v_rates_sp.yaw = _rates_sp(2) ;
 }
 
 void
 TiltBodyByVectoring::body_rates_control(float dt)
 {
-	math::Vector<3> rate_mea(0.0f,0.0f,0.0f) ;
-	if (_vcontrol_mode.flag_control_attitude_enabled){
-		math::Vector<3> rate_mea_temp(_vehicle_attitude.rollspeed, _vehicle_attitude.pitchspeed, _vehicle_attitude.yawspeed);
-		rate_mea = rate_mea_temp ;
-	} 
+	math::Vector<3> rate_mea(_vehicle_attitude.rollspeed, _vehicle_attitude.pitchspeed, _vehicle_attitude.yawspeed);
 	
 	math::Vector<3> rate_sp(_v_rates_sp.roll, _v_rates_sp.pitch, _v_rates_sp.yaw);
 
@@ -255,6 +224,7 @@ TiltBodyByVectoring::actuator_mixer(float dt)
 	fz = -10.0f; /* Newton */
 
 	fz = math::max( -fz , 0.0f );
+	/*
 	int sign_my ;
 	if(my >=0.0f){
 		sign_my = 1;
@@ -263,18 +233,18 @@ TiltBodyByVectoring::actuator_mixer(float dt)
 	}
 
 	my = math::min( fabsf(Kmy*my) , fz/4 )*sign_my ;
-
+	*/
 	float A1_long = fz/4 - Kmx*mx ;
-	float A1_lat  = fy/4 - Kmy*my + Kmz*mz ;
+	float A1_lat  = fx/4 - Kmy*my + Kmz*mz ;
 
 	float A2_long = fz/4 + Kmx*mx ;
-	float A2_lat  = fy/4 - Kmy*my - Kmz*mz ;
+	float A2_lat  = fx/4 - Kmy*my - Kmz*mz ;
 
 	float A3_long = fz/4 - Kmx*mx ;
-	float A3_lat  = fy/4 + Kmy*my + Kmz*mz ;
+	float A3_lat  = fx/4 + Kmy*my + Kmz*mz ;
 
 	float A4_long = fz/4 + Kmx*mx ;
-	float A4_lat  = fy/4 + Kmy*my - Kmz*mz ;
+	float A4_lat  = fx/4 + Kmy*my - Kmz*mz ;
 
 	A1_long = math::constrain(A1_long, 0.5f, 6.0f);
 	A2_long = math::constrain(A2_long, 0.5f, 6.0f);

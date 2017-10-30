@@ -48,6 +48,7 @@
 
 #include <drivers/drv_hrt.h>
 #include <mathlib/mathlib.h>
+#include <lib/tailsitter_recovery/tailsitter_recovery.h>
 
 #include <systemlib/param/param.h>
 #include <systemlib/pid/pid.h>
@@ -134,6 +135,8 @@ private:
 		param_t bat_scale_en;
 
 	} _parameter_handles{};		/**< handles for interesting parameters */
+
+	TailsitterRecovery *_opt_recovery{nullptr};
 
 	PID_t			_roll_rate_ctrl{};
 	PID_t			_pitch_rate_ctrl{};

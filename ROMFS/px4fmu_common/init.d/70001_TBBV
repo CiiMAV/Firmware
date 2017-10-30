@@ -25,7 +25,7 @@ then
 fi
 
 # use PWM parameters for throttle channel
-set PWM_OUT 12345678
+set PWM_OUT 1357
 set PWM_RATE 400
 set PWM_MIN 1000
 set PWM_MAX 2000
