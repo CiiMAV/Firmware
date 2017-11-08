@@ -811,7 +811,6 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	/* construct attitude setpoint rotation matrix */
 	math::Quaternion q_sp(_v_att_sp.q_d[0], _v_att_sp.q_d[1], _v_att_sp.q_d[2], _v_att_sp.q_d[3]);
 	math::Matrix<3, 3> R_sp = q_sp.to_dcm();
-
 	/* get current rotation matrix from control state quaternions */
 	math::Quaternion q_att(_v_att.q[0], _v_att.q[1], _v_att.q[2], _v_att.q[3]);
 	math::Matrix<3, 3> R = q_att.to_dcm();
@@ -995,7 +994,6 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 
 	/* angular rates error */
 	math::Vector<3> rates_err = _rates_sp - rates;
-
 	_att_control = rates_p_scaled.emult(rates_err) +
 		       _rates_int +
 		       rates_d_scaled.emult(_rates_prev - rates) / dt +
@@ -1003,7 +1001,6 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 
 	_rates_sp_prev = _rates_sp;
 	_rates_prev = rates;
-
 	/* update integral only if motors are providing enough thrust to be effective */
 	if (_thrust_sp > MIN_TAKEOFF_THRUST) {
 		for (int i = AXIS_INDEX_ROLL; i < AXIS_COUNT; i++) {
@@ -1173,7 +1170,7 @@ MulticopterAttitudeControl::task_main()
 				}
 
 				/* publish attitude rates setpoint */
-				_v_rates_sp.roll = _rates_sp(0);
+				_v_rates_sp.roll = _rates_sp(0);				
 				_v_rates_sp.pitch = _rates_sp(1);
 				_v_rates_sp.yaw = _rates_sp(2);
 				_v_rates_sp.thrust = _thrust_sp;

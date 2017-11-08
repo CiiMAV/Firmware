@@ -176,8 +176,8 @@ TiltBodyByVectoring::attitude_control(float dt)
 	math::Vector<3> att_p(4.0f,4.0f,4.0f) ;
 
 	math::Vector<3> _rates_sp;
-
 	_rates_sp.zero();
+	
 	_opt_recovery->setAttGains(att_p, 0.0f);
 	_opt_recovery->calcOptimalRates(q_att, q_sp, 0.0f, _rates_sp);
 
