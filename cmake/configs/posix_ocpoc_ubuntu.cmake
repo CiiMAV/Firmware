@@ -48,6 +48,9 @@ set(config_module_list
 	#
 	modules/mc_att_control
 	modules/mc_pos_control
+	modules/vtol_att_control
+	modules/fw_att_control
+	modules/fw_pos_control_l1
 
 	#
 	# Library modules
@@ -69,7 +72,7 @@ set(config_module_list
 	#
 	drivers/gps
 	drivers/ocpoc_adc
-	drivers/ocpoc_sbus_rc_in
+	drivers/linux_sbus
 	drivers/linux_pwm_out
 	drivers/rgbled
 	drivers/ulanding

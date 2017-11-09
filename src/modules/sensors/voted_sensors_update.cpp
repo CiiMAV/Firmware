@@ -920,14 +920,21 @@ bool VotedSensorsUpdate::check_failover(SensorData &sensor, const char *sensor_n
 			}
 
 		} else {
-			mavlink_log_emergency(&_mavlink_log_pub, "%s #%i fail: %s%s%s%s%s!",
-					      sensor_name,
-					      sensor.voter.failover_index(),
-					      ((flags & DataValidator::ERROR_FLAG_NO_DATA) ? " OFF" : ""),
-					      ((flags & DataValidator::ERROR_FLAG_STALE_DATA) ? " STALE" : ""),
-					      ((flags & DataValidator::ERROR_FLAG_TIMEOUT) ? " TOUT" : ""),
-					      ((flags & DataValidator::ERROR_FLAG_HIGH_ERRCOUNT) ? " ECNT" : ""),
-					      ((flags & DataValidator::ERROR_FLAG_HIGH_ERRDENSITY) ? " EDNST" : ""));
+			int failover_index = sensor.voter.failover_index();
+
+			if (failover_index != -1) {
+				mavlink_log_emergency(&_mavlink_log_pub, "%s #%i fail: %s%s%s%s%s!",
+						      sensor_name,
+						      failover_index,
+						      ((flags & DataValidator::ERROR_FLAG_NO_DATA) ? " OFF" : ""),
+						      ((flags & DataValidator::ERROR_FLAG_STALE_DATA) ? " STALE" : ""),
+						      ((flags & DataValidator::ERROR_FLAG_TIMEOUT) ? " TOUT" : ""),
+						      ((flags & DataValidator::ERROR_FLAG_HIGH_ERRCOUNT) ? " ECNT" : ""),
+						      ((flags & DataValidator::ERROR_FLAG_HIGH_ERRDENSITY) ? " EDNST" : ""));
+
+				// reduce priority of failed sensor to the minimum
+				sensor.priority[failover_index] = 1;
+			}
 		}
 
 		sensor.last_failover_count = sensor.voter.failover_count();
