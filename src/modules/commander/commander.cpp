@@ -2188,6 +2188,20 @@ int commander_thread_main(int argc, char *argv[])
 			}
 			else{
 				status_flags.condition_humming_valid = false;
+				if (internal_state.main_state == commander_state_s::MAIN_STATE_HUMMING)
+				{
+					transition_result_t res = TRANSITION_DENIED;
+					res = main_state_transition(&status, commander_state_s::MAIN_STATE_POSCTL, main_state_prev, &status_flags, &internal_state);
+					if (res == TRANSITION_DENIED) 
+					{
+						res = main_state_transition(&status, commander_state_s::MAIN_STATE_ALTCTL, main_state_prev, &status_flags, &internal_state);
+					}
+
+					if (res == TRANSITION_DENIED)
+					{
+						res = main_state_transition(&status, commander_state_s::MAIN_STATE_STAB, main_state_prev, &status_flags, &internal_state);
+					}
+				}
 			}
 		}
 
@@ -3484,7 +3498,8 @@ set_main_state_rc(struct vehicle_status_s *status_local, vehicle_global_position
 	}
 
 	/* humming switch overrides main switch */
-	if (sp_man.humming_switch == manual_control_setpoint_s::SWITCH_POS_ON && internal_state.main_state == commander_state_s::MAIN_STATE_POSCTL) {
+	if (sp_man.humming_switch == manual_control_setpoint_s::SWITCH_POS_ON &&
+	    internal_state.main_state == commander_state_s::MAIN_STATE_POSCTL ) {
 		res = main_state_transition(status_local, commander_state_s::MAIN_STATE_HUMMING, main_state_prev, &status_flags, &internal_state);
 
 		if (res != TRANSITION_DENIED) {
@@ -3519,7 +3534,7 @@ set_main_state_rc(struct vehicle_status_s *status_local, vehicle_global_position
 			res = main_state_transition(status_local, new_mode, main_state_prev, &status_flags, &internal_state);
 
 			/* ensure that the mode selection does not get stuck here */
-			int maxcount = 5;
+			int maxcount = 6;
 
 			/* enable the use of break */
 			/* fallback strategies, give the user the closest mode to what he wanted */
@@ -3599,7 +3614,19 @@ set_main_state_rc(struct vehicle_status_s *status_local, vehicle_global_position
 					}
 				}
 
-				if (new_mode == commander_state_s::MAIN_STATE_POSCTL || new_mode == commander_state_s::MAIN_STATE_HUMMING) {
+				if (new_mode == commander_state_s::MAIN_STATE_HUMMING) {
+
+					/* fall back to altitude control */
+					new_mode = commander_state_s::MAIN_STATE_POSCTL;
+					print_reject_mode(status_local, "HUMMING");
+					res = main_state_transition(status_local, new_mode, main_state_prev, &status_flags, &internal_state);
+
+					if (res != TRANSITION_DENIED) {
+						break;
+					}
+				}
+
+				if (new_mode == commander_state_s::MAIN_STATE_POSCTL) {
 
 					/* fall back to altitude control */
 					new_mode = commander_state_s::MAIN_STATE_ALTCTL;
