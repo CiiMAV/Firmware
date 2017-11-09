@@ -2525,7 +2525,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d)
 			    + _thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover);
 	}
-
+	
 	if (!_control_mode.flag_control_velocity_enabled && !_control_mode.flag_control_acceleration_enabled) {
 		thrust_sp(0) = 0.0f;
 		thrust_sp(1) = 0.0f;
@@ -2758,7 +2758,21 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		_att_sp.roll_body = euler(0);
 		_att_sp.pitch_body = euler(1);
 		/* yaw already used to construct rot matrix, but actual rotation matrix can have different yaw near singularity */
+		
+		/* Humming mode 
+		reconstruct rotation matrix then convert to quaternion
+		*/
+		if(_control_mode.flag_control_humming_enabled){
+			_att_sp.pitch_body = 10.0f*(M_PI_F/180.0f) ;
+			_R_setpoint = matrix::Eulerf(_att_sp.roll_body, _att_sp.pitch_body, _att_sp.yaw_body);
+			q_sp = _R_setpoint;
+			q_sp.copyTo(_att_sp.q_d);
+			_att_sp.q_d_valid = true;
 
+			/* Don't forget to reset pos setpoint */
+			_reset_pos_sp = true;
+			reset_pos_sp();			
+		}
 	} else if (!_control_mode.flag_control_manual_enabled) {
 		/* autonomous altitude control without position control (failsafe landing),
 		 * force level attitude, don't change yaw */
@@ -2826,7 +2840,9 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 			_att_sp.thrust = math::max(_att_sp.thrust, _manual_thr_min.get());
 		}
 	}
+	if (_control_mode.flag_control_humming_enabled){
 
+	}
 	/* control roll and pitch directly if no aiding velocity controller is active */
 	if (!_control_mode.flag_control_velocity_enabled) {
 
