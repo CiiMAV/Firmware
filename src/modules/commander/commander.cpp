@@ -1459,6 +1459,8 @@ int commander_thread_main(int argc, char *argv[])
 	status_flags.condition_local_velocity_valid = false;
 	status_flags.condition_local_altitude_valid = false;
 
+	status_flags.condition_humming_valid = false;
+
 	// initialize gps failure to false if circuit breaker enabled
 	if (status_flags.circuit_breaker_engaged_gpsfailure_check) {
 		status_flags.gps_failure = false;
@@ -2179,6 +2181,13 @@ int commander_thread_main(int argc, char *argv[])
 			if (run_quality_checks) {
 				check_posvel_validity(local_position.xy_valid, local_position.eph, eph_threshold, local_position.timestamp, &last_lpos_fail_time_us, &lpos_probation_time_us, &status_flags.condition_local_position_valid, &status_changed);
 				check_posvel_validity(local_position.v_xy_valid, local_position.evh, evh_threshold, local_position.timestamp, &last_lvel_fail_time_us, &lvel_probation_time_us, &status_flags.condition_local_velocity_valid, &status_changed);
+			}
+
+			if( (local_position.vx*local_position.vx+local_position.vy*local_position.vy) < 3.0f ){
+				status_flags.condition_humming_valid = true;
+			}
+			else{
+				status_flags.condition_humming_valid = false;
 			}
 		}
 

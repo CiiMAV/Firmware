@@ -112,6 +112,7 @@ struct status_flags_s {
     bool gps_failure_cmd;                                // Set to true if a gps failure mode is commanded
     bool barometer_failure;                                // Set to true if a barometer failure is detected
     bool ever_had_barometer_data;                        // Set to true if ever had valid barometer data before
+    bool condition_humming_valid;
 };
 
 bool is_safe(const struct safety_s *safety, const struct actuator_armed_s *armed);
