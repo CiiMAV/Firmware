@@ -15,7 +15,7 @@ set(config_module_list
 	drivers/boards
 	drivers/rgbled
 	drivers/mpu6000
-	drivers/mpu9250
+	#drivers/mpu9250
 	drivers/lsm303d
 	drivers/l3gd20
 	drivers/hmc5883
@@ -23,6 +23,7 @@ set(config_module_list
 	#drivers/mb12xx
 	#drivers/srf02
 	drivers/sf0x
+	drivers/sf1xx
 	drivers/ll40ls
 	drivers/teraranger
 	drivers/gps
@@ -36,7 +37,7 @@ set(config_module_list
 	drivers/ms4525_airspeed
 	drivers/ms5525_airspeed
 	drivers/sdp3x_airspeed
-	#drivers/frsky_telemetry
+	drivers/frsky_telemetry
 	modules/sensors
 	#drivers/mkblctrl
 	drivers/px4flow
@@ -126,7 +127,6 @@ set(config_module_list
 	#
 	modules/systemlib/param
 	modules/systemlib
-	modules/systemlib/mixer
 	modules/uORB
 	modules/dataman
 
@@ -134,19 +134,20 @@ set(config_module_list
 	# Libraries
 	#
 	lib/controllib
-	lib/mathlib
-	lib/mathlib/math/filter
+	lib/conversion
+	lib/DriverFramework/framework
 	lib/ecl
 	lib/geo
 	lib/geo_lookup
-	lib/conversion
 	lib/launchdetection
 	lib/led
-	lib/terrain_estimation
+	lib/mathlib
+	lib/mathlib/math/filter
+	lib/mixer
 	lib/runway_takeoff
 	lib/tailsitter_recovery
+	lib/terrain_estimation
 	lib/version
-	lib/DriverFramework/framework
 	platforms/nuttx
 
 	# had to add for cmake, not sure why wasn't in original config
@@ -156,7 +157,7 @@ set(config_module_list
 	#
 	# OBC challenge
 	#
-	#modules/bottle_drop
+	#examples/bottle_drop
 
 	#
 	# Rover apps
