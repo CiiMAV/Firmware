@@ -65,6 +65,7 @@
 #include <uORB/topics/vehicle_global_position.h>
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/manual_control_setpoint.h>
+#include <uORB/topics/debug_key_value.h>
 #include <systemlib/param/param.h>
 #include <systemlib/err.h>
 #include <systemlib/mavlink_log.h>
@@ -146,6 +147,9 @@ private:
 
 	struct actuator_controls_s _actuators;
 	orb_advert_t	_actuator_pub;
+
+	struct debug_key_value_s dbg;
+	orb_advert_t pub_dbg;
 
 	float actuators_setpoint[4];
 	int actuators_error[4];
@@ -420,8 +424,8 @@ Humming::goto_pos(float x , float y)
 void
 Humming::goto_home()
 {	
-	actuators_setpoint[0] = -1.0f;
-	actuators_setpoint[1] = -1.0f;	
+	actuators_setpoint[0] = 0.0f;
+	actuators_setpoint[1] = 0.0f;	
 	mavlink_log_info(&_mavlink_log_pub, "new setpoint [goto_home]");
 }
 
@@ -435,7 +439,7 @@ Humming::liquid_pos(float z)
 void
 Humming::liquid_back()
 {
-	actuators_setpoint[2] = -1.0f;
+	actuators_setpoint[2] = 0.0f;
 	mavlink_log_info(&_mavlink_log_pub, "new setpoint [liquid_back]");
 }
 
@@ -449,7 +453,7 @@ Humming::probe_pos(float z)
 void
 Humming::probe_back()
 {
-	actuators_setpoint[3] = -1.0f;
+	actuators_setpoint[3] = 0.0f;
 	mavlink_log_info(&_mavlink_log_pub, "new setpoint [probe_back]");
 }
 
@@ -459,7 +463,7 @@ Humming::actuators_publish()
 	_actuators.timestamp = hrt_absolute_time();
 
 	// lazily publish _actuators only once available
-	if (_actuator_pub != nullptr) {
+	if (_actuator_pub != nullptr) {		
 		return orb_publish(ORB_ID(actuator_controls_2), _actuator_pub, &_actuators);
 
 	} else {
@@ -490,6 +494,8 @@ Humming::task_main()
 
 	orb_advert_t vehicle_command_ack_pub = nullptr;
 
+	pub_dbg = orb_advertise(ORB_ID(debug_key_value), &dbg);
+
 	bool updated = false;
 	/* initialize parameters cache */
 	parameters_update();
@@ -508,7 +514,7 @@ Humming::task_main()
 	probe_pos(1.0f);
 	*/
 
-	const unsigned sleeptime_us = 9500;
+	const unsigned sleeptime_us = 9000;
 
 	while (!_task_should_exit) {
 
@@ -595,16 +601,20 @@ Humming::task_main()
 			for (uint8_t i = 0; i < 4; i++)
 			{
 				if( actuators_setpoint[i] - _actuators.control[i] > 0 ){
-					_actuators.control[i] = _actuators.control[i] + _params.act_length[i]*_params.act_speed[i]*deltaT ;
+					_actuators.control[i] = _actuators.control[i] + (_params.act_speed[i]*deltaT)/_params.act_length[i] ;
 				}
 				else if( actuators_setpoint[i] < _actuators.control[i] ){
-					_actuators.control[i] = _actuators.control[i] - _params.act_length[i] ;
+					_actuators.control[i] = _actuators.control[i] - (_params.act_speed[i]*deltaT)/_params.act_length[i] ;
 				}
-				actuators_error[i] = actuators_setpoint[i] - _actuators.control[i] ;
-				_actuators.control[i] =  _actuators.control[i] + math::constrain( (float)actuators_error[i] , - _params.act_length[i] , + _params.act_length[i]);
+				_actuators.control[i] = math::constrain(_actuators.control[i], 0.0f,1.0f);
 			}
 
 			actuators_publish();
+
+			strcpy(dbg.key,"ACT3");
+			dbg.value = _actuators.control[2];
+
+			orb_publish(ORB_ID(debug_key_value), pub_dbg, &dbg);
 
 			usleep(sleeptime_us);
 		}	

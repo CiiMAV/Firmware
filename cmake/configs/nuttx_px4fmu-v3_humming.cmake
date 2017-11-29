@@ -175,7 +175,7 @@ set(config_module_list
 	#
 	# OBC challenge
 	#
-	examples/bottle_drop
+	#examples/bottle_drop
 
 	#
 	# Rover apps
