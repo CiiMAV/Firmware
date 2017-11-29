@@ -155,14 +155,26 @@ private:
 
 	struct {
 
-		param_t act_change_rate;
+		param_t act_1_length;
+		param_t act_2_length;
+		param_t act_3_length;
+		param_t act_4_length;
+		param_t act_5_length;
+		param_t act_6_length;
+
+		param_t act_1_speed;
+		param_t act_2_speed;
+		param_t act_3_speed;
+		param_t act_4_speed;
+		param_t act_5_speed;
+		param_t act_6_speed;
 
 	}	_params_handles;		/**< handles for interesting parameters */
 
 	struct {
 
-		float act_change_rate;	
-
+		float act_length[6];
+		float act_speed[6];
 	}	_params{};
 
 	/**
@@ -229,8 +241,19 @@ Humming::Humming() :
 
 
 
-	_params_handles.act_change_rate = param_find("HUM_CHANGE_RATE");
+	_params_handles.act_1_length = param_find("ACT_1_LEN");
+	_params_handles.act_2_length = param_find("ACT_2_LEN");
+	_params_handles.act_3_length = param_find("ACT_3_LEN");
+	_params_handles.act_4_length = param_find("ACT_4_LEN");
+	_params_handles.act_5_length = param_find("ACT_5_LEN");
+	_params_handles.act_6_length = param_find("ACT_6_LEN");
 
+	_params_handles.act_1_speed = param_find("ACT_1_SPE");
+	_params_handles.act_2_speed = param_find("ACT_2_SPE");
+	_params_handles.act_3_speed = param_find("ACT_3_SPE");
+	_params_handles.act_4_speed = param_find("ACT_4_SPE");
+	_params_handles.act_5_speed = param_find("ACT_5_SPE");
+	_params_handles.act_6_speed = param_find("ACT_6_SPE");
 	/* fetch initial parameter values */
 	parameters_update();
 }
@@ -264,8 +287,31 @@ int
 Humming::parameters_update()
 {	
 	float v;
-	param_get(_params_handles.act_change_rate, &v);
-	_params.act_change_rate = v;
+	param_get(_params_handles.act_1_length, &v);
+	_params.act_length[0] = v;
+	param_get(_params_handles.act_2_length, &v);
+	_params.act_length[1] = v;
+	param_get(_params_handles.act_3_length, &v);
+	_params.act_length[2] = v;
+	param_get(_params_handles.act_4_length, &v);
+	_params.act_length[3] = v;
+	param_get(_params_handles.act_5_length, &v);
+	_params.act_length[4] = v;
+	param_get(_params_handles.act_6_length, &v);
+	_params.act_length[5] = v;
+
+	param_get(_params_handles.act_1_speed, &v);
+	_params.act_speed[0] = v;
+	param_get(_params_handles.act_2_speed, &v);
+	_params.act_speed[1] = v;
+	param_get(_params_handles.act_3_speed, &v);
+	_params.act_speed[2] = v;
+	param_get(_params_handles.act_4_speed, &v);
+	_params.act_speed[3] = v;
+	param_get(_params_handles.act_5_speed, &v);
+	_params.act_speed[4] = v;
+	param_get(_params_handles.act_6_speed, &v);
+	_params.act_speed[5] = v;
 	return OK;
 }
 
@@ -486,6 +532,16 @@ Humming::task_main()
 		}
 
 		while( _humming_sys_start ){
+			static uint64_t last_run = 0;
+			float deltaT = (hrt_absolute_time() - last_run) / 1000000.0f;
+			last_run = hrt_absolute_time();
+
+			/* guard against too large deltaT's */
+			if (deltaT > 1.0f ||
+			    fabsf(deltaT) < 0.00001f ||
+			    !PX4_ISFINITE(deltaT)) {
+				deltaT = 0.01f;
+			}
 
 			parameter_update_poll(true);
 
@@ -539,14 +595,15 @@ Humming::task_main()
 			for (uint8_t i = 0; i < 4; i++)
 			{
 				if( actuators_setpoint[i] - _actuators.control[i] > 0 ){
-					_actuators.control[i] = _actuators.control[i] + _params.act_change_rate ;
+					_actuators.control[i] = _actuators.control[i] + _params.act_length[i]*_params.act_speed[i]*deltaT ;
 				}
 				else if( actuators_setpoint[i] < _actuators.control[i] ){
-					_actuators.control[i] = _actuators.control[i] - _params.act_change_rate ;
+					_actuators.control[i] = _actuators.control[i] - _params.act_length[i] ;
 				}
 				actuators_error[i] = actuators_setpoint[i] - _actuators.control[i] ;
-				_actuators.control[i] =  _actuators.control[i] + math::constrain( (float)actuators_error[i] , - _params.act_change_rate , + _params.act_change_rate);
+				_actuators.control[i] =  _actuators.control[i] + math::constrain( (float)actuators_error[i] , - _params.act_length[i] , + _params.act_length[i]);
 			}
+
 			actuators_publish();
 
 			usleep(sleeptime_us);

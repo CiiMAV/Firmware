@@ -41,11 +41,121 @@
 #include <systemlib/param/param.h>
 
 /**
- * Actuator change rate
+ * Actuator 1 length 
  *
- * @min 0.0001
- * @max 0.1
- * @decimal 4
+ * @max 20
+ * @unit cm 
+ * @decimal 1
  * @group Humming
  */
-PARAM_DEFINE_FLOAT(HUM_CHANGE_RATE, 0.005f);
+PARAM_DEFINE_FLOAT(ACT_1_LEN, 10.0f);
+
+/**
+ * Actuator 2 length 
+ *
+ * @max 20
+ * @unit cm 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_2_LEN, 10.0f);
+
+/**
+ * Actuator 3 length 
+ *
+ * @max 20
+ * @unit cm 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_3_LEN, 10.0f);
+
+/**
+ * Actuator 4 length 
+ *
+ * @max 20
+ * @unit cm 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_4_LEN, 10.0f);
+
+/**
+ * Actuator 5 length 
+ *
+ * @max 20
+ * @unit cm 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_5_LEN, 10.0f);
+
+/**
+ * Actuator 6 length 
+ *
+ * @max 20
+ * @unit cm 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_6_LEN, 10.0f);
+
+/**
+ * Actuator 1 speed
+ *
+ * @max 10
+ * @unit cm/s 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_1_SPE, 10.0f);
+
+/**
+ * Actuator 2 speed
+ *
+ * @max 10
+ * @unit cm/s 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_2_SPE, 10.0f);
+
+/**
+ * Actuator 3 speed
+ *
+ * @max 10
+ * @unit cm/s 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_3_SPE, 10.0f);
+
+/**
+ * Actuator 4 speed
+ *
+ * @max 10
+ * @unit cm/s 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_4_SPE, 10.0f);
+
+/**
+ * Actuator 5 speed
+ *
+ * @max 10
+ * @unit cm/s 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_5_SPE, 10.0f);
+
+/**
+ * Actuator 6 speed
+ *
+ * @max 10
+ * @unit cm/s 
+ * @decimal 1
+ * @group Humming
+ */
+PARAM_DEFINE_FLOAT(ACT_6_SPE, 10.0f);
