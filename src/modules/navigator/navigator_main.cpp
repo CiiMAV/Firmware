@@ -525,7 +525,8 @@ Navigator::task_main()
 				// TODO: handle responses for supported DO_CHANGE_SPEED options?
 				publish_vehicle_command_ack(cmd, vehicle_command_s::VEHICLE_CMD_RESULT_ACCEPTED);
 
-			} else if (cmd.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ROI) {
+			} else if (cmd.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ROI
+				   || cmd.command == vehicle_command_s::VEHICLE_CMD_NAV_ROI) {
 				_vroi = {};
 				_vroi.mode = cmd.param1;
 
@@ -610,60 +611,62 @@ Navigator::task_main()
 		}
 
 		/* Do stuff according to navigation state set by commander */
+		NavigatorMode *navigation_mode_new{nullptr};
+
 		switch (_vstatus.nav_state) {
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_mission;
+			navigation_mode_new = &_mission;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_loiter;
+			navigation_mode_new = &_loiter;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_RCRECOVER:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_rcLoss;
+			navigation_mode_new = &_rcLoss;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_RTL:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_rtl;
+			navigation_mode_new = &_rtl;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_TAKEOFF:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_takeoff;
+			navigation_mode_new = &_takeoff;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_LAND:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_land;
+			navigation_mode_new = &_land;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_DESCEND:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_land;
+			navigation_mode_new = &_land;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_RTGS:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_dataLinkLoss;
+			navigation_mode_new = &_dataLinkLoss;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_LANDENGFAIL:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_engineFailure;
+			navigation_mode_new = &_engineFailure;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_LANDGPSFAIL:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_gpsFailure;
+			navigation_mode_new = &_gpsFailure;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_FOLLOW_TARGET:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = &_follow_target;
+			navigation_mode_new = &_follow_target;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_MANUAL:
@@ -675,10 +678,17 @@ Navigator::task_main()
 		case vehicle_status_s::NAVIGATION_STATE_STAB:
 		default:
 			_pos_sp_triplet_published_invalid_once = false;
-			_navigation_mode = nullptr;
+			navigation_mode_new = nullptr;
 			_can_loiter_at_sp = false;
 			break;
 		}
+
+		/* we have a new navigation mode: reset triplet */
+		if (_navigation_mode != navigation_mode_new) {
+			reset_triplets();
+		}
+
+		_navigation_mode = navigation_mode_new;
 
 		/* iterate through navigation modes and set active/inactive for each */
 		for (unsigned int i = 0; i < NAVIGATOR_MODE_ARRAY_SIZE; i++) {
@@ -914,7 +924,7 @@ void Navigator::fake_traffic(const char *callsign, float distance, float directi
 	tr.heading = traffic_heading; //-atan2(vel_e, vel_n); // Course over ground in radians
 	tr.hor_velocity	= hor_velocity; //sqrtf(vel_e * vel_e + vel_n * vel_n); // The horizontal velocity in m/s
 	tr.ver_velocity = ver_velocity; //-vel_d; // The vertical velocity in m/s, positive is up
-	strcpy(&tr.callsign[0], callsign);
+	strncpy(&tr.callsign[0], callsign, sizeof(tr.callsign));
 	tr.emitter_type = 0; // Type from ADSB_EMITTER_TYPE enum
 	tr.tslc = 2; // Time since last communication in seconds
 	tr.flags = 0; // Flags to indicate various statuses including valid data fields
