@@ -154,6 +154,7 @@ private:
 	float actuators_setpoint[4];
 	int actuators_error[4];
 	bool task_1;
+	int task_point;
 	int state ;
 	int counter;
 
@@ -242,7 +243,7 @@ Humming::Humming() :
 	task_1 = false;
 	state = 0;
 	counter = 0;
-
+	task_point = -1;
 
 
 	_params_handles.act_1_length = param_find("ACT_1_LEN");
@@ -598,12 +599,25 @@ Humming::task_main()
 				}
 			}
 
+			if(task_point != -1){
+				switch(task_point){
+					case 1:
+						break;
+					case 2:
+						break;
+					default:
+						task_point = -1;
+						break;
+				}
+			}
+
 			for (uint8_t i = 0; i < 4; i++)
 			{
-				if( actuators_setpoint[i] - _actuators.control[i] > 0 ){
+				float dead_zone = 0.001 ;
+				if( actuators_setpoint[i] - _actuators.control[i] > dead_zone){
 					_actuators.control[i] = _actuators.control[i] + (_params.act_speed[i]*deltaT)/_params.act_length[i] ;
 				}
-				else if( actuators_setpoint[i] < _actuators.control[i] ){
+				else if( actuators_setpoint[i] - _actuators.control[i] < -dead_zone){
 					_actuators.control[i] = _actuators.control[i] - (_params.act_speed[i]*deltaT)/_params.act_length[i] ;
 				}
 				_actuators.control[i] = math::constrain(_actuators.control[i], 0.0f,1.0f);
@@ -729,6 +743,33 @@ Humming::handle_command(struct vehicle_command_s *cmd)
 		}		
 		answer_command(cmd, vehicle_command_s::VEHICLE_CMD_RESULT_ACCEPTED);
 		break;
+	case vehicle_command_s::VEHICLE_CMD_CUSTOM_2:
+		/* Direct control mode */
+		if ( (int)(cmd->param1) == 1 )
+		{
+			if( (int)(cmd->param2) >=0 && (int)(cmd->param2) <=5 ){
+				if(_humming_sys_start){
+					actuators_setpoint[(int)(cmd->param2)] = cmd->param3;			
+				}
+				else{
+					mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
+				}
+			}
+		}
+		
+		/* State machine mode */
+		if ( (int)(cmd->param1) == 2)
+		{
+			/* inspection point */
+			if( (int)(cmd->param2) >=0 && (int)(cmd->param2) <=8 ){
+				if(_humming_sys_start){
+					task_point = (int)(cmd->param2) ;		
+				}
+				else{
+					mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
+				}
+			}
+		}
 	default:
 		break;
 	}
