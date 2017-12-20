@@ -448,6 +448,8 @@ void Tailsitter::fill_actuator_outputs()
 
 		_actuators_out_1->timestamp = _actuators_mc_in->timestamp;
 
+		_actuators_out_1->control[actuator_controls_s::INDEX_YAW] = 0 ;	// yaw
+		
 		if (_params->elevons_mc_lock == 1) {
 			_actuators_out_1->control[0] = 0;
 			_actuators_out_1->control[1] = 0;
