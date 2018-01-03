@@ -1335,7 +1335,7 @@ MulticopterPositionControl::control_manual(float dt)
 		/* set horizontal velocity setpoint with roll/pitch stick */
 		man_vel_sp(0) = math::expo_deadzone(_manual.x, _xy_vel_man_expo.get(), _hold_dz.get());
 		man_vel_sp(1) = math::expo_deadzone(_manual.y, _xy_vel_man_expo.get(), _hold_dz.get());
-
+		
 		const float man_vel_hor_length = ((matrix::Vector2f)man_vel_sp.slice<2, 1>(0, 0)).length();
 
 		/* saturate such that magnitude is never larger than 1 */
@@ -1364,6 +1364,7 @@ MulticopterPositionControl::control_manual(float dt)
 	/* prepare cruise speed (m/s) vector to scale the velocity setpoint */
 	float vel_mag = (_velocity_hor_manual.get() < _vel_max_xy) ? _velocity_hor_manual.get() : _vel_max_xy;
 	matrix::Vector3f vel_cruise_scale(vel_mag, vel_mag, (man_vel_sp(2) > 0.0f) ? _params.vel_max_down : _params.vel_max_up);
+
 	/* Setpoint scaled to cruise speed */
 	man_vel_sp = man_vel_sp.emult(vel_cruise_scale);
 
@@ -2523,6 +2524,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		}
 	}
 
+
 	/* velocity error */
 	math::Vector<3> vel_err = _vel_sp - _vel;
 
@@ -2533,6 +2535,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		thrust_sp = math::Vector<3>(_pos_sp_triplet.current.a_x, _pos_sp_triplet.current.a_y, _pos_sp_triplet.current.a_z);
 
 	} else {
+		
 		thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d)
 			    + _thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover);
 	}
@@ -2618,6 +2621,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 			float thrust_sp_xy_len = math::Vector<2>(thrust_sp(0), thrust_sp(1)).length();
 
 			if (thrust_sp_xy_len > 0.01f) {
+				
 				/* max horizontal thrust for given vertical thrust*/
 				float thrust_xy_max = -thrust_sp(2) * tanf(tilt_max);
 
@@ -2773,17 +2777,17 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		/* Humming mode 
 		reconstruct rotation matrix then convert to quaternion
 		*/
-		if(_control_mode.flag_control_humming_enabled){
-			_att_sp.pitch_body = 10.0f*(M_PI_F/180.0f) ;
+		/*if(_control_mode.flag_control_humming_enabled){
+			_att_sp.pitch_body = -10.0f*(M_PI_F/180.0f) ;
 			_R_setpoint = matrix::Eulerf(_att_sp.roll_body, _att_sp.pitch_body, _att_sp.yaw_body);
 			q_sp = _R_setpoint;
 			q_sp.copyTo(_att_sp.q_d);
 			_att_sp.q_d_valid = true;
-
+		*/
 			/* Don't forget to reset pos setpoint */
-			_reset_pos_sp = true;
+		/*	_reset_pos_sp = true;
 			reset_pos_sp();			
-		}
+		}*/
 	} else if (!_control_mode.flag_control_manual_enabled) {
 		/* autonomous altitude control without position control (failsafe landing),
 		 * force level attitude, don't change yaw */
@@ -2851,9 +2855,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 			_att_sp.thrust = math::max(_att_sp.thrust, _manual_thr_min.get());
 		}
 	}
-	if (_control_mode.flag_control_humming_enabled){
 
-	}
 	/* control roll and pitch directly if no aiding velocity controller is active */
 	if (!_control_mode.flag_control_velocity_enabled) {
 
@@ -2879,9 +2881,15 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		 * This allows a simple limitation of the tilt angle, the vehicle flies towards the direction that the stick
 		 * points to, and changes of the stick input are linear.
 		 */
-		const float x = _manual.x * _params.man_tilt_max;
-		const float y = _manual.y * _params.man_tilt_max;
+		float x = _manual.x * _params.man_tilt_max;
+		float y = _manual.y * _params.man_tilt_max;
 
+		if (_control_mode.flag_control_humming_enabled)
+		{
+			x = 5.0f*M_PI_F/180.0f;
+			y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
+			y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
+		}
 		// we want to fly towards the direction of (x, y), so we use a perpendicular axis angle vector in the XY-plane
 		matrix::Vector2f v = matrix::Vector2f(y, -x);
 		float v_norm = v.norm(); // the norm of v defines the tilt angle
