@@ -127,12 +127,42 @@ private:
 	struct {
 
 		int32_t bat_scale_en;			/**< Battery scaling enabled */
+		int32_t servo_re_1;
+		int32_t servo_re_2;
+		int32_t servo_re_3;
+		int32_t servo_re_4;
+
+		float kmx;
+		float kmy;
+		float kmz;
+
+		float roll_p;
+		float pitch_p;
+		float yaw_p;
+
+		int32_t feed_fx;
+		int32_t feed_fy;
 
 	} _parameters{};			/**< local copies of interesting parameters */
 
 	struct {
 
 		param_t bat_scale_en;
+		param_t servo_re_1;
+		param_t servo_re_2;
+		param_t servo_re_3;
+		param_t servo_re_4;
+
+		param_t kmx;
+		param_t kmy;
+		param_t kmz;
+
+		param_t roll_p;
+		param_t pitch_p;
+		param_t yaw_p;
+
+		param_t feed_fx;
+		param_t feed_fy;
 
 	} _parameter_handles{};		/**< handles for interesting parameters */
 
@@ -144,6 +174,9 @@ private:
 
 	math::Matrix<3,3> J{};
 
+	math::Quaternion q_setpoint;
+
+	float yaw=0.0f;
 	/* Number of motor */
 	int number_of_motor = 4;
 	/* Force desired */
@@ -175,6 +208,8 @@ private:
 	void		actuator_armed_poll();
 
 	/* Control function */
+	void		force_vector_generator(float dt);
+	void		quaternions_setpoint_generator(float dt);
 	void		attitude_control(float dt);
 	void		body_rates_control(float dt);
 	void		actuator_mixer(float dt);

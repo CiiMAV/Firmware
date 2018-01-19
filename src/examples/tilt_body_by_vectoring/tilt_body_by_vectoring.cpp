@@ -66,7 +66,21 @@ TiltBodyByVectoring::TiltBodyByVectoring() :
 {
 	_opt_recovery = new TailsitterRecovery();
 	_parameter_handles.bat_scale_en = param_find("TBBV_BAT_SCA_EN");
+	_parameter_handles.servo_re_1 = param_find("TBBV_SERVO_RE_1");
+	_parameter_handles.servo_re_2 = param_find("TBBV_SERVO_RE_2");
+	_parameter_handles.servo_re_3 = param_find("TBBV_SERVO_RE_3");
+	_parameter_handles.servo_re_4 = param_find("TBBV_SERVO_RE_4");
 
+	_parameter_handles.kmx = param_find("TBBV_KMX");
+	_parameter_handles.kmy = param_find("TBBV_KMY");
+	_parameter_handles.kmz = param_find("TBBV_KMZ");
+
+	_parameter_handles.roll_p = param_find("TBBV_ROLL_P");
+	_parameter_handles.pitch_p = param_find("TBBV_PITCH_P");
+	_parameter_handles.yaw_p = param_find("TBBV_YAW_P");
+
+	_parameter_handles.feed_fx = param_find("TBBV_FEED_FX");
+	_parameter_handles.feed_fy = param_find("TBBV_FEED_FY");
 	/* fetch initial parameter values */
 	parameters_update();
 }
@@ -106,6 +120,21 @@ void
 TiltBodyByVectoring::parameters_update()
 {
 	param_get(_parameter_handles.bat_scale_en, &_parameters.bat_scale_en);
+	param_get(_parameter_handles.servo_re_1, &_parameters.servo_re_1);
+	param_get(_parameter_handles.servo_re_2, &_parameters.servo_re_2);
+	param_get(_parameter_handles.servo_re_3, &_parameters.servo_re_3);
+	param_get(_parameter_handles.servo_re_4, &_parameters.servo_re_4);
+
+	param_get(_parameter_handles.kmx, &_parameters.kmx);
+	param_get(_parameter_handles.kmy, &_parameters.kmy);
+	param_get(_parameter_handles.kmz, &_parameters.kmz);
+
+	param_get(_parameter_handles.roll_p, &_parameters.roll_p);
+	param_get(_parameter_handles.pitch_p, &_parameters.pitch_p);
+	param_get(_parameter_handles.yaw_p, &_parameters.yaw_p);
+
+	param_get(_parameter_handles.feed_fx, &_parameters.feed_fx);
+	param_get(_parameter_handles.feed_fy, &_parameters.feed_fy);
 
 	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled("CBRK_RATE_CTRL", CBRK_RATE_CTRL_KEY);
 
@@ -166,14 +195,30 @@ TiltBodyByVectoring::actuator_armed_poll()
 }
 
 void 
+TiltBodyByVectoring::force_vector_generator(float dt)
+{
+	fx = _manual.x;
+	fy = _manual.y;
+	fz = -10.0f*_manual.z; 
+}
+
+void 
+TiltBodyByVectoring::quaternions_setpoint_generator(float dt)
+{
+	yaw = yaw +( 0.5f *_manual.r * dt);
+	q_setpoint.from_yaw(yaw);
+}
+
+void 
 TiltBodyByVectoring::attitude_control(float dt)
 {	
 	/* get current rotation matrix from control state quaternions */
 	math::Quaternion q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
 	
-	math::Quaternion q_sp(1.0f,0.0f,0.0f,0.0f);
+	//math::Quaternion q_sp(1.0f,0.0f,0.0f,0.0f);
+	math::Quaternion q_sp = q_setpoint;
 
-	math::Vector<3> att_p(4.0f,4.0f,4.0f) ;
+	math::Vector<3> att_p(8.0f,8.0f,8.0f) ;
 
 	math::Vector<3> _rates_sp;
 	_rates_sp.zero();
@@ -196,16 +241,20 @@ TiltBodyByVectoring::body_rates_control(float dt)
 	math::Vector<3> rate_error = rate_sp - rate_mea ;	
 
 	/* time constant (inverse of P gain ) */
-	float roll_tc = 10.0f;
-	float pitch_tc = 10.0f;
-	float yaw_tc = 10.0f;
+	float roll_p = 1.0f;
+	float pitch_p = 1.0f;
+	float yaw_p = 1.0f;
+
+	roll_p = _parameters.roll_p;
+	pitch_p = _parameters.pitch_p;
+	yaw_p = _parameters.yaw_p;
 
 	{
 		/* Future PID controller */
 	}
 
-	math::Vector<3> rate_tc(1.0f/roll_tc,1.0f/pitch_tc,1.0f/yaw_tc);
-	math::Vector<3> torque_des = rate_tc.emult( J * rate_error ) ;
+	math::Vector<3> rate_p(roll_p,pitch_p,yaw_p);
+	math::Vector<3> torque_des = rate_p.emult(rate_error) ;
 
 	//torque_des += ( rate_mea % (J * rate_mea) ) ;
 
@@ -220,6 +269,15 @@ TiltBodyByVectoring::actuator_mixer(float dt)
 	float Kmx = 0.0f;
 	float Kmy = 1.0f;
 	float Kmz = 0.0f;
+
+	Kmx = _parameters.kmx;
+	Kmy = _parameters.kmy;
+	Kmz = _parameters.kmz;
+
+	{
+		fx = fx*_parameters.feed_fx;
+		fy = fy*_parameters.feed_fy;
+	}
 
 	fz = -10.0f; /* Newton */
 
@@ -322,10 +380,10 @@ TiltBodyByVectoring::actuator_set()
 	_actuators_0.control[7] = t4 - mean_thr ;
 
 	/* tilt servo */
-	_actuators_1.control[4] = z1 ;
-	_actuators_1.control[5] = z2 ;
-	_actuators_1.control[6] = z3 ;
-	_actuators_1.control[7] = z4 ;
+	_actuators_1.control[4] = z1*( 1-2*(int)_parameters.servo_re_1) ;
+	_actuators_1.control[5] = z2*( 1-2*(int)_parameters.servo_re_2) ;
+	_actuators_1.control[6] = z3*( 1-2*(int)_parameters.servo_re_3) ;
+	_actuators_1.control[7] = z4*( 1-2*(int)_parameters.servo_re_4) ;
 }
 
 void
@@ -564,8 +622,12 @@ TiltBodyByVectoring::task_main()
 				}
 			}*/
 
-			if(!_actuator_armed.armed){
-				actuator_disarm_rotor();					
+			if(!_actuator_armed.armed || true ){
+				/* reset yaw */
+				math::Quaternion q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
+				math::Vector<3> Euler= q_att.to_euler();
+				yaw = Euler(3);
+				//actuator_disarm_rotor();					
 			}
 
 			/* lazily publish the setpoint only once available */
