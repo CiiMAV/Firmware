@@ -143,6 +143,10 @@ private:
 		int32_t feed_fx;
 		int32_t feed_fy;
 
+		float att_roll;
+		float att_pitch;
+		float att_yaw;
+
 	} _parameters{};			/**< local copies of interesting parameters */
 
 	struct {
@@ -164,6 +168,10 @@ private:
 		param_t feed_fx;
 		param_t feed_fy;
 
+		param_t att_roll;
+		param_t att_pitch;
+		param_t att_yaw;
+
 	} _parameter_handles{};		/**< handles for interesting parameters */
 
 	TailsitterRecovery *_opt_recovery{nullptr};
@@ -173,6 +181,7 @@ private:
 	PID_t			_yaw_rate_ctrl{};
 
 	math::Matrix<3,3> J{};
+	math::Matrix<3, 3>  _I;				/**< identity matrix */
 
 	math::Quaternion q_setpoint;
 

@@ -81,7 +81,13 @@ TiltBodyByVectoring::TiltBodyByVectoring() :
 
 	_parameter_handles.feed_fx = param_find("TBBV_FEED_FX");
 	_parameter_handles.feed_fy = param_find("TBBV_FEED_FY");
+
+	_parameter_handles.att_roll = param_find("TBBV_ATT_ROLL");
+	_parameter_handles.att_pitch = param_find("TBBV_ATT_PITCH");
+	_parameter_handles.att_yaw = param_find("TBBV_ATT_YAW");
 	/* fetch initial parameter values */
+
+	_I.identity();
 	parameters_update();
 }
 
@@ -135,6 +141,10 @@ TiltBodyByVectoring::parameters_update()
 
 	param_get(_parameter_handles.feed_fx, &_parameters.feed_fx);
 	param_get(_parameter_handles.feed_fy, &_parameters.feed_fy);
+
+	param_get(_parameter_handles.att_roll, &_parameters.att_roll);
+	param_get(_parameter_handles.att_pitch, &_parameters.att_pitch);
+	param_get(_parameter_handles.att_yaw, &_parameters.att_yaw);
 
 	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled("CBRK_RATE_CTRL", CBRK_RATE_CTRL_KEY);
 
@@ -213,10 +223,10 @@ void
 TiltBodyByVectoring::attitude_control(float dt)
 {	
 	/* get current rotation matrix from control state quaternions */
-	math::Quaternion q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
+	//math::Quaternion q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
 	
 	//math::Quaternion q_sp(1.0f,0.0f,0.0f,0.0f);
-	math::Quaternion q_sp = q_setpoint;
+	/*math::Quaternion q_sp = q_setpoint;
 
 	math::Vector<3> att_p(8.0f,8.0f,8.0f) ;
 
@@ -225,6 +235,86 @@ TiltBodyByVectoring::attitude_control(float dt)
 	
 	_opt_recovery->setAttGains(att_p, 0.0f);
 	_opt_recovery->calcOptimalRates(q_att, q_sp, 0.0f, _rates_sp);
+    */
+    math::Vector<3> att_p(_parameters.att_roll,_parameters.att_pitch,_parameters.att_yaw) ;
+    math::Vector<3> _rates_sp;
+	/* construct attitude setpoint rotation matrix */
+	math::Quaternion q_sp = q_setpoint;
+	math::Matrix<3, 3> R_sp = q_sp.to_dcm();
+	/* get current rotation matrix from control state quaternions */
+	math::Quaternion q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
+	math::Matrix<3, 3> R = q_att.to_dcm();
+
+	/* all input data is ready, run controller itself */
+
+	/* try to move thrust vector shortest way, because yaw response is slower than roll/pitch */
+	math::Vector<3> R_z(R(0, 2), R(1, 2), R(2, 2));
+	math::Vector<3> R_sp_z(R_sp(0, 2), R_sp(1, 2), R_sp(2, 2));
+
+	/* axis and sin(angle) of desired rotation (indexes: 0=pitch, 1=roll, 2=yaw).
+	 * This is for roll/pitch only (tilt), e_R(2) is 0 */
+	math::Vector<3> e_R = R.transposed() * (R_z % R_sp_z);
+
+	/* calculate angle error */
+	float e_R_z_sin = e_R.length(); // == sin(tilt angle error)
+	float e_R_z_cos = R_z * R_sp_z; // == cos(tilt angle error) == (R.transposed() * R_sp)(2, 2)
+
+	/* calculate rotation matrix after roll/pitch only rotation */
+	math::Matrix<3, 3> R_rp;
+
+	if (e_R_z_sin > 0.0f) {
+		/* get axis-angle representation */
+		float e_R_z_angle = atan2f(e_R_z_sin, e_R_z_cos);
+		math::Vector<3> e_R_z_axis = e_R / e_R_z_sin;
+
+		e_R = e_R_z_axis * e_R_z_angle;
+
+		/* cross product matrix for e_R_axis */
+		math::Matrix<3, 3> e_R_cp;
+		e_R_cp.zero();
+		e_R_cp(0, 1) = -e_R_z_axis(2);
+		e_R_cp(0, 2) = e_R_z_axis(1);
+		e_R_cp(1, 0) = e_R_z_axis(2);
+		e_R_cp(1, 2) = -e_R_z_axis(0);
+		e_R_cp(2, 0) = -e_R_z_axis(1);
+		e_R_cp(2, 1) = e_R_z_axis(0);
+
+		/* rotation matrix for roll/pitch only rotation */
+		R_rp = R * (_I + e_R_cp * e_R_z_sin + e_R_cp * e_R_cp * (1.0f - e_R_z_cos));
+
+	} else {
+		/* zero roll/pitch rotation */
+		R_rp = R;
+	}
+
+	/* R_rp and R_sp have the same Z axis, calculate yaw error */
+	math::Vector<3> R_sp_x(R_sp(0, 0), R_sp(1, 0), R_sp(2, 0));
+	math::Vector<3> R_rp_x(R_rp(0, 0), R_rp(1, 0), R_rp(2, 0));
+
+	/* calculate the weight for yaw control
+	 * Make the weight depend on the tilt angle error: the higher the error of roll and/or pitch, the lower
+	 * the weight that we use to control the yaw. This gives precedence to roll & pitch correction.
+	 * The weight is 1 if there is no tilt error.
+	 */
+	float yaw_w = e_R_z_cos * e_R_z_cos;
+
+	/* calculate the angle between R_rp_x and R_sp_x (yaw angle error), and apply the yaw weight */
+	e_R(2) = atan2f((R_rp_x % R_sp_x) * R_sp_z, R_rp_x * R_sp_x) * yaw_w;
+
+	if (e_R_z_cos < 0.0f) {
+		/* for large thrust vector rotations use another rotation method:
+		 * calculate angle and axis for R -> R_sp rotation directly */
+		math::Quaternion q_error;
+		q_error.from_dcm(R.transposed() * R_sp);
+		math::Vector<3> e_R_d = q_error(0) >= 0.0f ? q_error.imag()  * 2.0f : -q_error.imag() * 2.0f;
+
+		/* use fusion of Z axis based rotation and direct rotation */
+		float direct_w = e_R_z_cos * e_R_z_cos * yaw_w;
+		e_R = e_R * (1.0f - direct_w) + e_R_d * direct_w;
+	}
+
+	/* calculate angular rates setpoint */
+	_rates_sp = att_p.emult(e_R);
 
 	_v_rates_sp.roll = _rates_sp(0) ;
 	_v_rates_sp.pitch = _rates_sp(1) ;
@@ -279,7 +369,7 @@ TiltBodyByVectoring::actuator_mixer(float dt)
 		fy = fy*_parameters.feed_fy;
 	}
 
-	fz = -10.0f; /* Newton */
+	//fz = -10.0f; /* Newton */
 
 	fz = math::max( -fz , 0.0f );
 	/*
@@ -532,20 +622,17 @@ TiltBodyByVectoring::task_main()
 	actuator_armed_poll();
 			
 	/* wakeup source */
-	px4_pollfd_struct_t fds[2];
+	px4_pollfd_struct_t fds[1];
 
-	/* Setup of loop */
-	fds[0].fd = _params_sub;
+	/* Setup of loop */	
+	fds[0].fd = _vehicle_attitude_sub;
 	fds[0].events = POLLIN;
-	fds[1].fd = _vehicle_attitude_sub;
-	fds[1].events = POLLIN;
 
 	_task_running = true;
 
 	while (!_task_should_exit) {
-		static int loop_counter = 0;
-
-		/* wait for up to 500ms for data */
+		
+		/* wait for up to 100ms for data */
 		int pret = px4_poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 100);
 
 		/* timed out - periodic check for _task_should_exit, etc. */
@@ -562,17 +649,18 @@ TiltBodyByVectoring::task_main()
 		perf_begin(_loop_perf);
 
 		/* only update parameters if they changed */
-		if (fds[0].revents & POLLIN) {
-			/* read from param to clear updated flag */
-			struct parameter_update_s update;
-			orb_copy(ORB_ID(parameter_update), _params_sub, &update);
-
-			/* update parameters from storage */
+		/* read from param to clear updated flag */
+		bool update = false;
+		orb_copy(ORB_ID(parameter_update), _params_sub, &update);
+		/* update parameters from storage */
+		if (update)
+		{
 			parameters_update();
-		}
+		}		
+		
 
 		/* only run controller if attitude changed */
-		if (fds[1].revents & POLLIN) {
+		if (fds[0].revents & POLLIN) {
 			static uint64_t last_run = 0;
 			float deltaT = (hrt_absolute_time() - last_run) / 1000000.0f;
 			last_run = hrt_absolute_time();
@@ -596,6 +684,8 @@ TiltBodyByVectoring::task_main()
 			float dt = deltaT ; 
 
 			if (_vcontrol_mode.flag_control_attitude_enabled){
+				force_vector_generator(dt);
+				quaternions_setpoint_generator(dt);
 				attitude_control(dt);
 			}
 			if (_vcontrol_mode.flag_control_rates_enabled) {
@@ -641,7 +731,7 @@ TiltBodyByVectoring::task_main()
 			
 			/* Only publish if any of the proper modes are enabled */
 			
-			if (!_actuators_0_circuit_breaker_enabled) {
+			if ( !_actuators_0_circuit_breaker_enabled || true) {
 				if (_vcontrol_mode.flag_control_rates_enabled) {
 
 					/* publish the actuator controls */
@@ -663,8 +753,7 @@ TiltBodyByVectoring::task_main()
 			}
 			
 		}
-
-		loop_counter++;
+		
 		perf_end(_loop_perf);
 	}
 
