@@ -622,19 +622,20 @@ TiltBodyByVectoring::task_main()
 	actuator_armed_poll();
 			
 	/* wakeup source */
-	px4_pollfd_struct_t fds[1];
+	struct pollfd fds[2] = {};
 
 	/* Setup of loop */	
-	fds[0].fd = _vehicle_attitude_sub;
+	fds[0].fd = _params_sub;
 	fds[0].events = POLLIN;
+	fds[1].fd = _vehicle_attitude_sub;
+	fds[1].events = POLLIN;
 
 	_task_running = true;
 
 	while (!_task_should_exit) {
 		
 		/* wait for up to 100ms for data */
-		int pret = px4_poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 100);
-
+		int pret = poll(fds, 2, 500);
 		/* timed out - periodic check for _task_should_exit, etc. */
 		if (pret == 0) {
 			continue;
@@ -649,18 +650,17 @@ TiltBodyByVectoring::task_main()
 		perf_begin(_loop_perf);
 
 		/* only update parameters if they changed */
-		/* read from param to clear updated flag */
-		bool update = false;
-		orb_copy(ORB_ID(parameter_update), _params_sub, &update);
-		/* update parameters from storage */
-		if (update)
-		{
+		if(fds[0].revents & POLLIN){
+			/* read from param to clear updated flag */
+			struct parameter_update_s update;
+			orb_copy(ORB_ID(parameter_update), _params_sub, &update);
+			/* update parameters from storage */
 			parameters_update();
 		}		
 		
 
 		/* only run controller if attitude changed */
-		if (fds[0].revents & POLLIN) {
+		if (fds[1].revents & POLLIN) {
 			static uint64_t last_run = 0;
 			float deltaT = (hrt_absolute_time() - last_run) / 1000000.0f;
 			last_run = hrt_absolute_time();
