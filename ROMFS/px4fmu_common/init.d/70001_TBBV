@@ -2,7 +2,7 @@
 #
 # @name Tilt body by vectoring
 #
-# @type Tilt body
+# @type VTOL Tiltrotor
 # @class VTOL
 #
 # @output MAIN1 top right rotor
@@ -16,11 +16,11 @@
 #
 # @maintainer Wattanakorn
 
-sh /etc/init.d/rc.vtol_defaults
+sh /etc/init.d/rc.mc_defaults
 set MIXER tbbv
 
 # use PWM parameters for throttle channel
-set PWM_OUT 1357
+set PWM_OUT 12345678
 set PWM_RATE 400
 set PWM_MIN 1000
 set PWM_MAX 2000

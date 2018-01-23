@@ -38,9 +38,14 @@ then
 fi
 #---------------------------------------
 
-mc_att_control start
+if param compare SYS_AUTOSTART 70001
+then
+	tilt_body_by_vectoring start
+else
+	mc_att_control start
 
-mc_pos_control start
+	mc_pos_control start
+fi
 
 #
 # Start Land Detector

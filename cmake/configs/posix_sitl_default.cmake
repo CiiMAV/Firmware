@@ -182,6 +182,8 @@ set(config_module_list
 
 	# Hardware test
 	#examples/hwtest
+
+	examples/tilt_body_by_vectoring
 )
 
 # Default config_sitl_rcS_dir (posix_sitl_default), this is overwritten later
