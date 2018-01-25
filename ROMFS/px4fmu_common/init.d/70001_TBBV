@@ -25,3 +25,7 @@ set PWM_RATE 400
 set PWM_MIN 1000
 set PWM_MAX 2000
 
+set MAV_TYPE 21
+
+
+
