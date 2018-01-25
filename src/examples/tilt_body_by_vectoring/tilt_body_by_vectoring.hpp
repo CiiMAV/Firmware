@@ -147,6 +147,11 @@ private:
 		float att_pitch;
 		float att_yaw;
 
+		float trim_roll;
+		float trim_pitch;
+
+		float total_thrust;
+		
 	} _parameters{};			/**< local copies of interesting parameters */
 
 	struct {
@@ -171,6 +176,11 @@ private:
 		param_t att_roll;
 		param_t att_pitch;
 		param_t att_yaw;
+
+		param_t trim_roll;
+		param_t trim_pitch;
+		
+		param_t total_thrust;
 
 	} _parameter_handles{};		/**< handles for interesting parameters */
 

@@ -85,6 +85,11 @@ TiltBodyByVectoring::TiltBodyByVectoring() :
 	_parameter_handles.att_roll = param_find("TBBV_ATT_ROLL");
 	_parameter_handles.att_pitch = param_find("TBBV_ATT_PITCH");
 	_parameter_handles.att_yaw = param_find("TBBV_ATT_YAW");
+
+	_parameter_handles.trim_roll = param_find("TBBV_TRIM_ROLL");
+	_parameter_handles.trim_pitch = param_find("TBBV_TRIM_PITCH");
+
+	_parameter_handles.total_thrust = param_find("TBBV_TOTAL_THRU");
 	/* fetch initial parameter values */
 
 	_I.identity();
@@ -145,6 +150,11 @@ TiltBodyByVectoring::parameters_update()
 	param_get(_parameter_handles.att_roll, &_parameters.att_roll);
 	param_get(_parameter_handles.att_pitch, &_parameters.att_pitch);
 	param_get(_parameter_handles.att_yaw, &_parameters.att_yaw);
+
+	param_get(_parameter_handles.trim_roll, &_parameters.trim_roll);
+	param_get(_parameter_handles.trim_pitch, &_parameters.trim_pitch);
+
+	param_get(_parameter_handles.total_thrust, &_parameters.total_thrust);
 
 	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled("CBRK_RATE_CTRL", CBRK_RATE_CTRL_KEY);
 
@@ -209,14 +219,14 @@ TiltBodyByVectoring::force_vector_generator(float dt)
 {
 	fx = _manual.x;
 	fy = _manual.y;
-	fz = -10.0f*_manual.z; 
+	fz = -_parameters.total_thrust*_manual.z; 
 }
 
 void 
 TiltBodyByVectoring::quaternions_setpoint_generator(float dt)
 {
 	yaw = yaw +( 0.5f *_manual.r * dt);
-	q_setpoint.from_yaw(yaw);
+	q_setpoint.from_euler(_parameters.trim_roll,_parameters.trim_pitch,yaw);
 }
 
 void 
@@ -622,11 +632,13 @@ TiltBodyByVectoring::task_main()
 	actuator_armed_poll();
 			
 	/* wakeup source */
-	px4_pollfd_struct_t fds[1];
+	px4_pollfd_struct_t fds[2];
 
 	/* Setup of loop */	
-	fds[0].fd = _vehicle_attitude_sub;
+	fds[0].fd = _params_sub;
 	fds[0].events = POLLIN;
+	fds[1].fd = _vehicle_attitude_sub;
+	fds[1].events = POLLIN;
 
 	_task_running = true;
 
@@ -649,18 +661,17 @@ TiltBodyByVectoring::task_main()
 		perf_begin(_loop_perf);
 
 		/* only update parameters if they changed */
-		/* read from param to clear updated flag */
-		bool update = false;
-		orb_copy(ORB_ID(parameter_update), _params_sub, &update);
-		/* update parameters from storage */
-		if (update)
-		{
+		if (fds[0].revents & POLLIN) {
+			/* read from param to clear updated flag */
+			struct parameter_update_s update;
+			orb_copy(ORB_ID(parameter_update), _params_sub, &update);
+			/* update parameters from storage */
 			parameters_update();
-		}		
+		}
 		
 
 		/* only run controller if attitude changed */
-		if (fds[0].revents & POLLIN) {
+		if (fds[1].revents & POLLIN) {
 			static uint64_t last_run = 0;
 			float deltaT = (hrt_absolute_time() - last_run) / 1000000.0f;
 			last_run = hrt_absolute_time();
@@ -682,6 +693,14 @@ TiltBodyByVectoring::task_main()
 
 			/* Body rate control */
 			float dt = deltaT ; 
+
+			if(!_actuator_armed.armed){
+				/* reset yaw */
+				math::Quaternion q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
+				math::Vector<3> Euler= q_att.to_euler();
+				yaw = Euler(2);
+				//actuator_disarm_rotor();					
+			}
 
 			if (_vcontrol_mode.flag_control_attitude_enabled){
 				force_vector_generator(dt);
@@ -712,13 +731,7 @@ TiltBodyByVectoring::task_main()
 				}
 			}*/
 
-			if(!_actuator_armed.armed || true ){
-				/* reset yaw */
-				math::Quaternion q_att(_vehicle_attitude.q[0], _vehicle_attitude.q[1], _vehicle_attitude.q[2], _vehicle_attitude.q[3]); // form 1 to 2 
-				math::Vector<3> Euler= q_att.to_euler();
-				yaw = Euler(3);
-				//actuator_disarm_rotor();					
-			}
+			
 
 			/* lazily publish the setpoint only once available */
 			_actuators_0.timestamp = hrt_absolute_time();
@@ -731,13 +744,13 @@ TiltBodyByVectoring::task_main()
 			
 			/* Only publish if any of the proper modes are enabled */
 			
-			if ( !_actuators_0_circuit_breaker_enabled || true) {
+			if ( !_actuators_0_circuit_breaker_enabled) {
 				if (_vcontrol_mode.flag_control_rates_enabled) {
 
 					/* publish the actuator controls */
 					if (_actuators_0_pub != nullptr) {
 						orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators_0);
-
+						
 					} else {
 						_actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators_0);
 					}
