@@ -79,6 +79,14 @@ TiltBodyByVectoring::TiltBodyByVectoring() :
 	_parameter_handles.pitch_p = param_find("TBBV_PITCH_P");
 	_parameter_handles.yaw_p = param_find("TBBV_YAW_P");
 
+	_parameter_handles.roll_i = param_find("TBBV_ROLL_I");
+	_parameter_handles.pitch_i = param_find("TBBV_PITCH_I");
+	_parameter_handles.yaw_i = param_find("TBBV_YAW_I");
+
+	_parameter_handles.roll_d = param_find("TBBV_ROLL_D");
+	_parameter_handles.pitch_d = param_find("TBBV_PITCH_D");
+	_parameter_handles.yaw_d = param_find("TBBV_YAW_D");
+
 	_parameter_handles.feed_fx = param_find("TBBV_FEED_FX");
 	_parameter_handles.feed_fy = param_find("TBBV_FEED_FY");
 
@@ -90,9 +98,16 @@ TiltBodyByVectoring::TiltBodyByVectoring() :
 	_parameter_handles.trim_pitch = param_find("TBBV_TRIM_PITCH");
 
 	_parameter_handles.total_thrust = param_find("TBBV_TOTAL_THRU");
+
+	_parameter_handles.rate_int_lim = param_find("TBBV_INT_LIM");
+
+	_parameter_handles.swap_roll_yaw = param_find("TBBV_SWAP_RY");
 	/* fetch initial parameter values */
 
 	_I.identity();
+	_rate_mea_prev.zero();
+	_rate_int.zero();
+
 	parameters_update();
 }
 
@@ -144,6 +159,14 @@ TiltBodyByVectoring::parameters_update()
 	param_get(_parameter_handles.pitch_p, &_parameters.pitch_p);
 	param_get(_parameter_handles.yaw_p, &_parameters.yaw_p);
 
+	param_get(_parameter_handles.roll_i, &_parameters.roll_i);
+	param_get(_parameter_handles.pitch_i, &_parameters.pitch_i);
+	param_get(_parameter_handles.yaw_i, &_parameters.yaw_i);
+
+	param_get(_parameter_handles.roll_d, &_parameters.roll_d);
+	param_get(_parameter_handles.pitch_d, &_parameters.pitch_d);
+	param_get(_parameter_handles.yaw_d, &_parameters.yaw_d);	
+
 	param_get(_parameter_handles.feed_fx, &_parameters.feed_fx);
 	param_get(_parameter_handles.feed_fy, &_parameters.feed_fy);
 
@@ -155,6 +178,10 @@ TiltBodyByVectoring::parameters_update()
 	param_get(_parameter_handles.trim_pitch, &_parameters.trim_pitch);
 
 	param_get(_parameter_handles.total_thrust, &_parameters.total_thrust);
+
+	param_get(_parameter_handles.rate_int_lim, &_parameters.rate_int_lim);
+
+	param_get(_parameter_handles.swap_roll_yaw, &_parameters.swap_roll_yaw);
 
 	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled("CBRK_RATE_CTRL", CBRK_RATE_CTRL_KEY);
 
@@ -217,8 +244,16 @@ TiltBodyByVectoring::actuator_armed_poll()
 void 
 TiltBodyByVectoring::force_vector_generator(float dt)
 {
-	fx = _manual.x;
-	fy = _manual.y;
+	if (horizontal_force_enabled)
+	{
+		fx = _manual.x;
+		fy = _manual.y;
+	}
+	else{
+		fx = 0.0f;
+		fy = 0.0f;
+	}	
+
 	fz = -_parameters.total_thrust*_manual.z; 
 }
 
@@ -226,7 +261,19 @@ void
 TiltBodyByVectoring::quaternions_setpoint_generator(float dt)
 {
 	yaw = yaw +( 0.5f *_manual.r * dt);
-	q_setpoint.from_euler(_parameters.trim_roll,_parameters.trim_pitch,yaw);
+	float pitch_sp = 0.0f;
+	float roll_sp = 0.0f;
+	if (horizontal_force_enabled)
+	{
+		pitch_sp = 0.0f;
+		roll_sp = 0.0f;
+	}
+	else{
+		pitch_sp = math::constrain(_manual.x, -math::radians(10.0f) , math::radians(10.0f)) ;
+		roll_sp = math::constrain(_manual.y, -math::radians(10.0f) , math::radians(10.0f)) ;
+	}
+
+	q_setpoint.from_euler(roll_sp + math::radians(_parameters.trim_roll) ,pitch_sp + math::radians(_parameters.trim_pitch) ,yaw);
 }
 
 void 
@@ -334,28 +381,39 @@ TiltBodyByVectoring::attitude_control(float dt)
 void
 TiltBodyByVectoring::body_rates_control(float dt)
 {
+	if (!_actuator_armed.armed)
+	{
+		_rate_int.zero();
+	}
+	
 	math::Vector<3> rate_mea(_vehicle_attitude.rollspeed, _vehicle_attitude.pitchspeed, _vehicle_attitude.yawspeed);
 	
 	math::Vector<3> rate_sp(_v_rates_sp.roll, _v_rates_sp.pitch, _v_rates_sp.yaw);
 
 	math::Vector<3> rate_error = rate_sp - rate_mea ;	
 
-	/* time constant (inverse of P gain ) */
-	float roll_p = 1.0f;
-	float pitch_p = 1.0f;
-	float yaw_p = 1.0f;
+	math::Vector<3> rate_p(_parameters.roll_p,_parameters.pitch_p,_parameters.yaw_p);
+	math::Vector<3> rate_d(_parameters.roll_d,_parameters.pitch_d,_parameters.yaw_d);
 
-	roll_p = _parameters.roll_p;
-	pitch_p = _parameters.pitch_p;
-	yaw_p = _parameters.yaw_p;
+	math::Vector<3> rate_i(_parameters.roll_i,_parameters.pitch_i,_parameters.yaw_i);
 
+	if ( math::max( -fz , 0.0f ) >= _parameters.total_thrust*0.3f )
 	{
-		/* Future PID controller */
+		math::Vector<3> _rate_i = _rate_int + rate_i.emult(rate_error) * dt ;
+		_rate_int = _rate_i;
 	}
 
-	math::Vector<3> rate_p(roll_p,pitch_p,yaw_p);
-	math::Vector<3> torque_des = rate_p.emult(rate_error) ;
 
+	for (int i = 0; i < 2; ++i)
+	{
+		_rate_int(i) = math::constrain(_rate_int(i), -_parameters.rate_int_lim, _parameters.rate_int_lim);
+	}
+	
+
+	math::Vector<3> torque_des = rate_p.emult(rate_error) + rate_d.emult(_rate_mea_prev - rate_mea)/dt
+								 + _rate_int ;
+
+	_rate_mea_prev = rate_mea ; 
 	//torque_des += ( rate_mea % (J * rate_mea) ) ;
 
 	mx = torque_des(0);
@@ -382,6 +440,14 @@ TiltBodyByVectoring::actuator_mixer(float dt)
 	//fz = -10.0f; /* Newton */
 
 	fz = math::max( -fz , 0.0f );
+	
+	if (_parameters.swap_roll_yaw)
+	{
+		float temp = mx;
+		mx = mz ;
+		mz = temp;
+	}
+
 	/*
 	int sign_my ;
 	if(my >=0.0f){
@@ -389,7 +455,7 @@ TiltBodyByVectoring::actuator_mixer(float dt)
 	}else{
 		sign_my = -1;
 	}
-
+	
 	my = math::min( fabsf(Kmy*my) , fz/4 )*sign_my ;
 	*/
 	float A1_long = fz/4 - Kmx*mx ;
@@ -449,7 +515,8 @@ TiltBodyByVectoring::actuator_normalize()
 	z3 = math::constrain(z3 , lower_lim  , upper_lim);
 	z4 = math::constrain(z4 , lower_lim  , upper_lim);
 
-} 
+}
+
 void 
 TiltBodyByVectoring::actuator_set()
 {
@@ -700,6 +767,11 @@ TiltBodyByVectoring::task_main()
 				math::Vector<3> Euler= q_att.to_euler();
 				yaw = Euler(2);
 				//actuator_disarm_rotor();					
+			}
+
+			if (_vcontrol_mode.flag_control_altitude_enabled)
+			{
+				/* code */
 			}
 
 			if (_vcontrol_mode.flag_control_attitude_enabled){

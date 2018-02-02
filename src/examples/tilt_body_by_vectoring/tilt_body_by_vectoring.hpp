@@ -140,6 +140,14 @@ private:
 		float pitch_p;
 		float yaw_p;
 
+		float roll_i;
+		float pitch_i;
+		float yaw_i;
+
+		float roll_d;
+		float pitch_d;
+		float yaw_d;
+
 		int32_t feed_fx;
 		int32_t feed_fy;
 
@@ -151,6 +159,10 @@ private:
 		float trim_pitch;
 
 		float total_thrust;
+
+		float rate_int_lim;
+
+		int32_t swap_roll_yaw;
 		
 	} _parameters{};			/**< local copies of interesting parameters */
 
@@ -170,6 +182,14 @@ private:
 		param_t pitch_p;
 		param_t yaw_p;
 
+		param_t roll_i;
+		param_t pitch_i;
+		param_t yaw_i;
+
+		param_t roll_d;
+		param_t pitch_d;
+		param_t yaw_d;
+
 		param_t feed_fx;
 		param_t feed_fy;
 
@@ -181,6 +201,10 @@ private:
 		param_t trim_pitch;
 		
 		param_t total_thrust;
+
+		param_t rate_int_lim;
+
+		param_t swap_roll_yaw;
 
 	} _parameter_handles{};		/**< handles for interesting parameters */
 
@@ -194,6 +218,9 @@ private:
 	math::Matrix<3, 3>  _I;				/**< identity matrix */
 
 	math::Quaternion q_setpoint;
+
+	math::Vector<3> _rate_mea_prev;
+	math::Vector<3> _rate_int;
 
 	float yaw=0.0f;
 	/* Number of motor */
@@ -218,6 +245,8 @@ private:
 	float z2=0.0f;
 	float z3=0.0f;
 	float z4=0.0f;
+
+	bool horizontal_force_enabled = false;
 
 	/* Polling function */
 	void		parameters_update();
