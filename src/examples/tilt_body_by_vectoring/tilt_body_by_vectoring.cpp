@@ -102,11 +102,22 @@ TiltBodyByVectoring::TiltBodyByVectoring() :
 	_parameter_handles.rate_int_lim = param_find("TBBV_INT_LIM");
 
 	_parameter_handles.swap_roll_yaw = param_find("TBBV_SWAP_RY");
+
+	_parameter_handles.max_vel_z = param_find("TBBV_MAX_VEL_Z");
+	_parameter_handles.vel_z_p = param_find("TBBV_VEL_Z_P");
+	_parameter_handles.vel_z_i = param_find("TBBV_VEL_Z_I");
+
+	_parameter_handles.weight = param_find("TBBV_WEIGHT");
 	/* fetch initial parameter values */
 
 	_I.identity();
 	_rate_mea_prev.zero();
 	_rate_int.zero();
+
+	_vel.zero();
+	_vel_err.zero();
+	_vel_sp.zero();
+	_vel_int.zero();
 
 	parameters_update();
 }
@@ -183,6 +194,12 @@ TiltBodyByVectoring::parameters_update()
 
 	param_get(_parameter_handles.swap_roll_yaw, &_parameters.swap_roll_yaw);
 
+	param_get(_parameter_handles.max_vel_z, &_parameters.max_vel_z);
+	param_get(_parameter_handles.vel_z_p, &_parameters.vel_z_p);
+	param_get(_parameter_handles.vel_z_i, &_parameters.vel_z_i);
+
+	param_get(_parameter_handles.weight, &_parameters.weight);
+
 	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled("CBRK_RATE_CTRL", CBRK_RATE_CTRL_KEY);
 
 	/* pid parameters*/
@@ -241,6 +258,50 @@ TiltBodyByVectoring::actuator_armed_poll()
 	}
 }
 
+void
+TiltBodyByVectoring::local_position_poll()
+{
+	/* check if there is a new message */
+	bool updated;
+	orb_check(_local_pos_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(vehicle_local_position), _local_pos_sub, &_local_pos);
+	}
+}
+
+void
+TiltBodyByVectoring::altitude_control(float dt)
+{
+	if (!_actuator_armed.armed)
+	{
+		_vel_int.zero();
+	}
+
+	if (PX4_ISFINITE(_local_pos.vz))
+	{
+		_vel(2) = _local_pos.vz;
+	}
+
+	
+	if ( _manual.z >= 0.4f && _manual.z <= 0.6f )
+	{
+		_vel_sp(2) = 0.0f;
+	}
+	else if (_manual.z > 0.6f)
+	{
+		_vel_sp(2) = _parameters.max_vel_z *( _manual.z - 0.6f );
+	}
+	else{
+		
+		_vel_sp(2) = _parameters.max_vel_z *( _manual.z - 0.4f );
+	}
+
+	_vel_err(2) = _vel_sp(2) - _vel(2) ;
+
+	_vel_int(2) = _vel_int(2) + _vel_err(2)*dt ;
+}
+
 void 
 TiltBodyByVectoring::force_vector_generator(float dt)
 {
@@ -254,7 +315,12 @@ TiltBodyByVectoring::force_vector_generator(float dt)
 		fy = 0.0f;
 	}	
 
-	fz = -_parameters.total_thrust*_manual.z; 
+	fz = -_parameters.total_thrust*_manual.z;
+
+	if (_vcontrol_mode.flag_control_altitude_enabled)
+	{
+	 	fz = -_parameters.weight - (_parameters.vel_z_p * _vel_err(2)) - (_parameters.vel_z_i * _vel_int(2)) ; 
+	} 
 }
 
 void 
@@ -771,7 +837,7 @@ TiltBodyByVectoring::task_main()
 
 			if (_vcontrol_mode.flag_control_altitude_enabled)
 			{
-				/* code */
+				altitude_control(dt);
 			}
 
 			if (_vcontrol_mode.flag_control_attitude_enabled){

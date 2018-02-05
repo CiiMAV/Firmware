@@ -64,6 +64,8 @@
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
+#include <uORB/topics/vehicle_local_position.h>
+#include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/uORB.h>
 
 #include <systemlib/mavlink_log.h>
@@ -98,7 +100,8 @@ private:
 	int		_manual_sub{-1};			/**< notification of manual control updates */
 	int		_params_sub{-1};			/**< notification of parameter updates */
 	int		_vcontrol_mode_sub{-1};		/**< vehicle status subscription */
-	int 	_actuator_armed_sub{-1};	
+	int 	_actuator_armed_sub{-1};
+	int 	_local_pos_sub{-1};	
 
 	/* All advertise */
 	orb_advert_t	_actuators_0_pub{nullptr};		/**< actuator control group 0 setpoint */
@@ -110,11 +113,12 @@ private:
 	/* All uORB topic struct */
 	actuator_controls_s			_actuators_0 {};		/**< actuator control 0 */
 	actuator_controls_s			_actuators_1 {};		/**< actuator control 1 */
-	battery_status_s				_battery_status {};	/**< battery status */	
-	manual_control_setpoint_s		_manual {};		/**< r/c channel data */
-	vehicle_attitude_s				_vehicle_attitude {};	/**< vehicle attitude */
-	vehicle_control_mode_s			_vcontrol_mode {};		/**< vehicle control mode */
-	vehicle_rates_setpoint_s		_v_rates_sp {};
+	battery_status_s			_battery_status {};	/**< battery status */	
+	manual_control_setpoint_s	_manual {};		/**< r/c channel data */
+	vehicle_attitude_s			_vehicle_attitude {};	/**< vehicle attitude */
+	vehicle_control_mode_s		_vcontrol_mode {};		/**< vehicle control mode */
+	vehicle_rates_setpoint_s	_v_rates_sp {};
+	vehicle_local_position_s	_local_pos{};		/**< vehicle local position */
 	actuator_armed_s 			_actuator_armed {};
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
@@ -163,6 +167,12 @@ private:
 		float rate_int_lim;
 
 		int32_t swap_roll_yaw;
+
+		float max_vel_z;
+		float vel_z_p;
+		float vel_z_i;
+		
+		float weight;
 		
 	} _parameters{};			/**< local copies of interesting parameters */
 
@@ -206,6 +216,12 @@ private:
 
 		param_t swap_roll_yaw;
 
+		param_t max_vel_z;
+		param_t vel_z_p;
+		param_t vel_z_i;
+
+		param_t weight;
+
 	} _parameter_handles{};		/**< handles for interesting parameters */
 
 	TailsitterRecovery *_opt_recovery{nullptr};
@@ -221,6 +237,11 @@ private:
 
 	math::Vector<3> _rate_mea_prev;
 	math::Vector<3> _rate_int;
+
+	math::Vector<3> _vel;
+	math::Vector<3> _vel_err;
+	math::Vector<3> _vel_sp;
+	math::Vector<3> _vel_int;
 
 	float yaw=0.0f;
 	/* Number of motor */
@@ -254,8 +275,11 @@ private:
 	void		manual_control_setpoint_poll();	
 	void		battery_status_poll();
 	void		actuator_armed_poll();
+	void		local_position_poll();
 
 	/* Control function */
+
+	void		altitude_control(float dt);
 	void		force_vector_generator(float dt);
 	void		quaternions_setpoint_generator(float dt);
 	void		attitude_control(float dt);
