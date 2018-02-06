@@ -2267,7 +2267,7 @@ int commander_thread_main(int argc, char *argv[])
 					check_posvel_validity(local_position.v_xy_valid, local_position.evh, evh_threshold, local_position.timestamp, &last_lvel_fail_time_us, &lvel_probation_time_us, &status_flags.condition_local_velocity_valid, &status_changed);
 				}
 			}
-
+			/*
 			if( (local_position.vx*local_position.vx+local_position.vy*local_position.vy) < 200.0f ){
 				status_flags.condition_humming_valid = true;
 			}
@@ -2288,6 +2288,7 @@ int commander_thread_main(int argc, char *argv[])
 					}
 				}
 			}
+			*/
 		}
 
 		/* update attitude estimate */
@@ -3603,7 +3604,7 @@ set_main_state_rc(struct vehicle_status_s *status_local, vehicle_global_position
 
 	/* humming switch overrides main switch */
 	if (sp_man.humming_switch == manual_control_setpoint_s::SWITCH_POS_ON &&
-	    internal_state.main_state == commander_state_s::MAIN_STATE_POSCTL ) {
+	    (internal_state.main_state == commander_state_s::MAIN_STATE_POSCTL || internal_state.main_state == commander_state_s::MAIN_STATE_ALTCTL) ) {
 		res = main_state_transition(status_local, commander_state_s::MAIN_STATE_HUMMING, main_state_prev, &status_flags, &internal_state);
 
 		if (res != TRANSITION_DENIED) {

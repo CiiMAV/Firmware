@@ -2886,9 +2886,9 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 
 		if (_control_mode.flag_control_humming_enabled)
 		{
-			x = 5.0f*M_PI_F/180.0f;
-			y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
-			y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
+			x = 4.0f*M_PI_F/180.0f;
+			//y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
+			//y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
 		}
 		// we want to fly towards the direction of (x, y), so we use a perpendicular axis angle vector in the XY-plane
 		matrix::Vector2f v = matrix::Vector2f(y, -x);

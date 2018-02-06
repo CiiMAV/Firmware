@@ -404,15 +404,10 @@ main_state_transition(struct vehicle_status_s *status, main_state_t new_main_sta
 		break;
 
 	case commander_state_s::MAIN_STATE_HUMMING:
-		if (status_flags->condition_humming_valid)
-		{	
-			/* need at minimum local position estimate */
-			if (status_flags->condition_local_position_valid ||
-		    	status_flags->condition_global_position_valid) {
-				ret = TRANSITION_CHANGED;
-			}
-			warn("humming conditions is valid");
-			break;/* code */
+		/* need at minimum altitude estimate */
+		if (status_flags->condition_local_altitude_valid ||
+		    status_flags->condition_global_position_valid) {
+			ret = TRANSITION_CHANGED;
 		}
 		
 		break;
