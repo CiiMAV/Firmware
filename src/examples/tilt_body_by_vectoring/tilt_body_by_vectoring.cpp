@@ -108,6 +108,8 @@ TiltBodyByVectoring::TiltBodyByVectoring() :
 	_parameter_handles.vel_z_i = param_find("TBBV_VEL_Z_I");
 
 	_parameter_handles.weight = param_find("TBBV_WEIGHT");
+
+	_parameter_handles.gain_sched = param_find("TBBV_GAIN_SCHED");
 	/* fetch initial parameter values */
 
 	_I.identity();
@@ -199,6 +201,8 @@ TiltBodyByVectoring::parameters_update()
 	param_get(_parameter_handles.vel_z_i, &_parameters.vel_z_i);
 
 	param_get(_parameter_handles.weight, &_parameters.weight);
+
+	param_get(_parameter_handles.gain_sched, &_parameters.gain_sched);
 
 	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled("CBRK_RATE_CTRL", CBRK_RATE_CTRL_KEY);
 
@@ -293,7 +297,7 @@ TiltBodyByVectoring::altitude_control(float dt)
 		_vel_sp(2) = _parameters.max_vel_z *( _manual.z - 0.6f );
 	}
 	else{
-		
+
 		_vel_sp(2) = _parameters.max_vel_z *( _manual.z - 0.4f );
 	}
 
@@ -305,7 +309,7 @@ TiltBodyByVectoring::altitude_control(float dt)
 void 
 TiltBodyByVectoring::force_vector_generator(float dt)
 {
-	if (horizontal_force_enabled)
+	if .horizontal_force_enabled)
 	{
 		fx = _manual.x;
 		fy = _manual.y;
@@ -438,6 +442,26 @@ TiltBodyByVectoring::attitude_control(float dt)
 
 	/* calculate angular rates setpoint */
 	_rates_sp = att_p.emult(e_R);
+
+	if(_parameters.gain_sched){
+		if (abs(e_R(1)) > math::radians(24.0f))
+		{
+			_rates_sp(1) = e_R(1) * att_p(1) * 0.4f ; 
+		}
+		else if (abs(e_R(1)) > math::radians(16.0f))
+		{
+			_rates_sp(1) = e_R(1) * att_p(1) * 0.6f ;
+		}
+		else if (abs(e_R(1)) > math::radians(8.0f))
+		{
+			_rates_sp(1) = e_R(1) * att_p(1) * 0.8f ;
+		}
+	}
+
+	/* limit rate setpoint */
+	_rates_sp(0) = math::constrain(_rates_sp(0) , -math::radians(100.0f) , math::radians(100.0f));
+	_rates_sp(0) = math::constrain(_rates_sp(0) , -math::radians(100.0f) , math::radians(100.0f));
+	_rates_sp(0) = math::constrain(_rates_sp(0) , -math::radians(100.0f) , math::radians(100.0f));
 
 	_v_rates_sp.roll = _rates_sp(0) ;
 	_v_rates_sp.pitch = _rates_sp(1) ;

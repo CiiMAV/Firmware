@@ -173,7 +173,9 @@ private:
 		float vel_z_i;
 		
 		float weight;
-		
+
+		int32_t gain_sched;
+
 	} _parameters{};			/**< local copies of interesting parameters */
 
 	struct {
@@ -221,6 +223,8 @@ private:
 		param_t vel_z_i;
 
 		param_t weight;
+
+		param_t gain_sched;
 
 	} _parameter_handles{};		/**< handles for interesting parameters */
 
