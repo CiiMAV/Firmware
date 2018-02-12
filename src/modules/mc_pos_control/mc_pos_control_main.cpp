@@ -63,6 +63,7 @@
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_control_mode.h>
+#include <uORB/topics/optical_flow.h>
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
@@ -72,6 +73,7 @@
 #include <lib/geo/geo.h>
 #include <mathlib/mathlib.h>
 #include <systemlib/mavlink_log.h>
+#include <conversion/rotation.h>
 
 #include <controllib/blocks.hpp>
 #include <controllib/block/BlockParam.hpp>
@@ -145,6 +147,7 @@ private:
 	int		_local_pos_sub;			/**< vehicle local position */
 	int		_pos_sp_triplet_sub;		/**< position setpoint triplet */
 	int		_home_pos_sub; 			/**< home position */
+	int 	_optical_flow_sub;		/**< optical flow front */
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
@@ -161,6 +164,7 @@ private:
 	struct position_setpoint_triplet_s		_pos_sp_triplet;	/**< vehicle global position setpoint triplet */
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct home_position_s				_home_pos; 				/**< home position */
+	struct optical_flow_s 				_optical_flow; 			/**< optical flow */
 
 	control::BlockParamFloat _manual_thr_min; /**< minimal throttle output when flying in manual mode */
 	control::BlockParamFloat _manual_thr_max; /**< maximal throttle output when flying in manual mode */
@@ -233,6 +237,9 @@ private:
 		param_t rc_flt_cutoff;
 
 		param_t hum_pitch;
+		param_t hum_flow_aid;
+		param_t hum_flow_p;
+		param_t hum_flow_rot;
 
 	}		_params_handles;		/**< handles for interesting parameters */
 
@@ -269,6 +276,9 @@ private:
 		math::Vector<3> vel_d;
 
 		float hum_pitch;
+		bool hum_flow_aid;
+		float hum_flow_p;
+		float hum_flow_rot;
 	} _params{};
 
 	struct map_projection_reference_s _ref_pos;
@@ -280,6 +290,7 @@ private:
 	math::Vector<3> _pos;
 	math::Vector<3> _pos_sp;
 	math::Vector<3> _vel;
+	math::Vector<3> _vel_flow;
 	math::Vector<3> _vel_sp;
 	math::Vector<3> _vel_prev;			/**< velocity on previous step */
 	math::Vector<3> _vel_sp_prev;
@@ -307,6 +318,11 @@ private:
 	uint8_t _heading_reset_counter;
 
 	matrix::Dcmf _R_setpoint;
+
+	/**
+	 * Optical flow
+	 */
+	void cal_optical_flow_vel(float dt);
 
 	/**
 	 * Update our local parameter cache.
@@ -422,6 +438,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_local_pos_sub(-1),
 	_pos_sp_triplet_sub(-1),
 	_home_pos_sub(-1),
+	_optical_flow_sub(-1),
 
 	/* publications */
 	_att_sp_pub(nullptr),
@@ -437,6 +454,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_pos_sp_triplet{},
 	_local_pos_sp{},
 	_home_pos{},
+	_optical_flow{},
 	_manual_thr_min(this, "MANTHR_MIN"),
 	_manual_thr_max(this, "MANTHR_MAX"),
 	_xy_vel_man_expo(this, "XY_MAN_EXPO"),
@@ -494,6 +512,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_pos.zero();
 	_pos_sp.zero();
 	_vel.zero();
+	_vel_flow.zero();
 	_vel_sp.zero();
 	_vel_prev.zero();
 	_vel_sp_prev.zero();
@@ -539,6 +558,9 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params_handles.rc_flt_smp_rate = param_find("RC_FLT_SMP_RATE");
 
 	_params_handles.hum_pitch = param_find("HUM_PITCH");
+	_params_handles.hum_flow_aid = param_find("HUM_FLOW_AID");
+	_params_handles.hum_flow_p = param_find("HUM_FLOW_P");
+	_params_handles.hum_flow_rot = param_find("HUM_FLOW_ROT");
 	/* fetch initial parameter values */
 	parameters_update(true);
 }
@@ -565,6 +587,34 @@ MulticopterPositionControl::~MulticopterPositionControl()
 	}
 
 	pos_control::g_control = nullptr;
+}
+void
+MulticopterPositionControl::cal_optical_flow_vel(float dt)
+{
+	enum Rotation _flow_rot;
+	_flow_rot = (enum Rotation)_params.hum_flow_rot;
+
+	float flow_x = _optical_flow.pixel_flow_x_integral - _optical_flow.gyro_x_rate_integral ;
+	float flow_y = _optical_flow.pixel_flow_y_integral - _optical_flow.gyro_y_rate_integral ;
+	float flow_z = 0.0f ;
+
+	float flow_dt = (1e-6f) * (float)_optical_flow.integration_timespan ; 
+	float flow_range = _optical_flow.ground_distance_m ; 
+
+	/* rotate form optical flow frame to body frame */
+	rotate_3f(_flow_rot, flow_x , flow_y , flow_z);
+
+	/* velocity in body frame */
+	if(flow_range <= 1.0f && flow_range >= 0.25f){
+	_vel_flow(0) = flow_range * flow_x / flow_dt ; /*default  = 0 */
+	_vel_flow(1) = flow_range * flow_y / flow_dt ; /*default != 0 */
+	_vel_flow(2) = flow_range * flow_z / flow_dt ; /*default != 0 */
+	}
+	else{
+		_vel_flow.zero();
+	}
+	/* rotate to NED frame */
+	_vel_flow = _R.transposed() * _vel_flow ; 
 }
 
 void
@@ -595,6 +645,14 @@ MulticopterPositionControl::parameters_update(bool force)
 		updateParams();
 
 		param_get(_params_handles.hum_pitch, &_params.hum_pitch);
+		param_get(_params_handles.hum_flow_p, &_params.hum_flow_p);
+
+		int32_t i_b;
+		param_get(_params_handles.hum_flow_rot, &i_b);
+		_params.hum_flow_rot = (int32_t)i_b;
+		param_get(_params_handles.hum_flow_aid, &i_b);
+		_params.hum_flow_aid = (bool)i_b;
+
 
 		/* update legacy C interface params */
 		param_get(_params_handles.thr_min, &_params.thr_min);
@@ -828,6 +886,13 @@ MulticopterPositionControl::poll_subscriptions()
 
 	if (updated) {
 		orb_copy(ORB_ID(home_position), _home_pos_sub, &_home_pos);
+	}
+
+	orb_check(_optical_flow_sub, &updated);
+
+	if (updated)
+	{
+		orb_copy(ORB_ID(optical_flow), _optical_flow_sub, &_optical_flow);
 	}
 }
 
@@ -2532,9 +2597,19 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		}
 	}
 
-
 	/* velocity error */
 	math::Vector<3> vel_err = _vel_sp - _vel;
+
+	if (_params.hum_flow_aid)
+	{
+		cal_optical_flow_vel(dt);
+		_vel_flow(0) = _params.hum_flow_p*_vel_flow(0);
+		_vel_flow(1) = _params.hum_flow_p*_vel_flow(1);
+		_vel_flow(2) = _params.hum_flow_p*_vel_flow(2);
+
+		vel_err = vel_err - _vel_flow ; 
+	}
+
 
 	/* thrust vector in NED frame */
 	math::Vector<3> thrust_sp;
@@ -3006,6 +3081,7 @@ MulticopterPositionControl::task_main()
 	_local_pos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
 	_pos_sp_triplet_sub = orb_subscribe(ORB_ID(position_setpoint_triplet));
 	_home_pos_sub = orb_subscribe(ORB_ID(home_position));
+	_optical_flow_sub = orb_subscribe(ORB_ID(optical_flow));
 
 	parameters_update(true);
 
