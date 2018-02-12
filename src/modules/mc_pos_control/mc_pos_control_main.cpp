@@ -231,6 +231,9 @@ private:
 		param_t opt_recover;
 		param_t rc_flt_smp_rate;
 		param_t rc_flt_cutoff;
+
+		param_t hum_pitch;
+
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -264,6 +267,8 @@ private:
 		math::Vector<3> vel_p;
 		math::Vector<3> vel_i;
 		math::Vector<3> vel_d;
+
+		float hum_pitch;
 	} _params{};
 
 	struct map_projection_reference_s _ref_pos;
@@ -533,6 +538,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params_handles.rc_flt_cutoff = param_find("RC_FLT_CUTOFF");
 	_params_handles.rc_flt_smp_rate = param_find("RC_FLT_SMP_RATE");
 
+	_params_handles.hum_pitch = param_find("HUM_PITCH");
 	/* fetch initial parameter values */
 	parameters_update(true);
 }
@@ -587,6 +593,8 @@ MulticopterPositionControl::parameters_update(bool force)
 	if (updated || force) {
 		/* update C++ param system */
 		updateParams();
+
+		param_get(_params_handles.hum_pitch, &_params.hum_pitch);
 
 		/* update legacy C interface params */
 		param_get(_params_handles.thr_min, &_params.thr_min);
@@ -2886,7 +2894,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 
 		if (_control_mode.flag_control_humming_enabled)
 		{
-			x = 4.0f*M_PI_F/180.0f;
+			x = _params.hum_pitch*M_PI_F/180.0f;
 			//y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
 			//y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
 		}
