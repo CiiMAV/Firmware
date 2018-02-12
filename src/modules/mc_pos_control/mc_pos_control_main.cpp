@@ -593,22 +593,25 @@ MulticopterPositionControl::cal_optical_flow_vel(float dt)
 {
 	enum Rotation _flow_rot;
 	_flow_rot = (enum Rotation)_params.hum_flow_rot;
-
+	
 	float flow_x = _optical_flow.pixel_flow_x_integral - _optical_flow.gyro_x_rate_integral ;
 	float flow_y = _optical_flow.pixel_flow_y_integral - _optical_flow.gyro_y_rate_integral ;
+	
 	float flow_z = 0.0f ;
 
 	float flow_dt = (1e-6f) * (float)_optical_flow.integration_timespan ; 
 	float flow_range = _optical_flow.ground_distance_m ; 
 
+	//warnx("flow_x: %d",(int)(flow_x*1000.0f));
 	/* rotate form optical flow frame to body frame */
 	rotate_3f(_flow_rot, flow_x , flow_y , flow_z);
 
 	/* velocity in body frame */
-	if(flow_range <= 1.0f && flow_range >= 0.25f){
-	_vel_flow(0) = flow_range * flow_x / flow_dt ; /*default  = 0 */
-	_vel_flow(1) = flow_range * flow_y / flow_dt ; /*default != 0 */
-	_vel_flow(2) = flow_range * flow_z / flow_dt ; /*default != 0 */
+	if(flow_range <= 1.0f && flow_range >= 0.25f && flow_dt > 0.05f){
+	float alpha = 0.5f ; 
+		_vel_flow(0) = alpha*_vel_flow(0) + (1-alpha)*flow_range * flow_x / flow_dt ; /*default  = 0 */
+		_vel_flow(1) = alpha*_vel_flow(1) + (1-alpha)*flow_range * flow_y / flow_dt ; /*default != 0 */
+		_vel_flow(2) = alpha*_vel_flow(2) + (1-alpha)*flow_range * flow_z / flow_dt ; /*default != 0 */
 	}
 	else{
 		_vel_flow.zero();
@@ -2606,7 +2609,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		_vel_flow(0) = _params.hum_flow_p*_vel_flow(0);
 		_vel_flow(1) = _params.hum_flow_p*_vel_flow(1);
 		_vel_flow(2) = _params.hum_flow_p*_vel_flow(2);
-
+		//warn("vel flow: %d %d %d", (int)(1000.0f*_vel_flow(0)) , (int)(1000.0f*_vel_flow(1)) , (int)(1000.0f*_vel_flow(2)));
 		vel_err = vel_err - _vel_flow ; 
 	}
 
