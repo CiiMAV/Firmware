@@ -2967,8 +2967,8 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		 * This allows a simple limitation of the tilt angle, the vehicle flies towards the direction that the stick
 		 * points to, and changes of the stick input are linear.
 		 */
-		float x = _manual.x * _params.man_tilt_max;
-		float y = _manual.y * _params.man_tilt_max;
+		float x = (_manual.x * _manual.x * _manual.x + _manual.x) * 0.5f * _params.man_tilt_max;
+		float y = (_manual.y * _manual.y * _manual.y + _manual.y) * 0.5f * _params.man_tilt_max;
 
 		if (_control_mode.flag_control_humming_enabled)
 		{
