@@ -241,6 +241,8 @@ private:
 		param_t hum_flow_p;
 		param_t hum_flow_rot;
 
+		param_t man_curve;
+
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -279,6 +281,8 @@ private:
 		bool hum_flow_aid;
 		float hum_flow_p;
 		float hum_flow_rot;
+
+		float man_curve;
 	} _params{};
 
 	struct map_projection_reference_s _ref_pos;
@@ -310,6 +314,9 @@ private:
 	float _manual_jerk_limit_xy; /**< jerk limit in manual mode dependent on stick input */
 	float _manual_jerk_limit_z; /**< jerk limit in manual mode in z */
 	float _takeoff_vel_limit; /**< velocity limit value which gets ramped up */
+
+	float flow_range;
+	float flow_dt;
 
 	// counters for reset events on position and velocity states
 	// they are used to identify a reset event
@@ -492,6 +499,8 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_manual_jerk_limit_xy(1.0f),
 	_manual_jerk_limit_z(1.0f),
 	_takeoff_vel_limit(0.0f),
+	flow_range(0.0f),
+	flow_dt(0.0f),
 	_z_reset_counter(0),
 	_xy_reset_counter(0),
 	_heading_reset_counter(0)
@@ -561,6 +570,8 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params_handles.hum_flow_aid = param_find("HUM_FLOW_AID");
 	_params_handles.hum_flow_p = param_find("HUM_FLOW_P");
 	_params_handles.hum_flow_rot = param_find("HUM_FLOW_ROT");
+
+	_params_handles.man_curve = param_find("MPC_MAN_CURVE");
 	/* fetch initial parameter values */
 	parameters_update(true);
 }
@@ -599,8 +610,8 @@ MulticopterPositionControl::cal_optical_flow_vel(float dt)
 	
 	float flow_z = 0.0f ;
 
-	float flow_dt = (1e-6f) * (float)_optical_flow.integration_timespan ; 
-	float flow_range = _optical_flow.ground_distance_m ; 
+	flow_dt = (1e-6f) * (float)_optical_flow.integration_timespan ; 
+	flow_range = _optical_flow.ground_distance_m ; 
 
 	//warnx("flow_x: %d",(int)(flow_x*1000.0f));
 	/* rotate form optical flow frame to body frame */
@@ -608,7 +619,7 @@ MulticopterPositionControl::cal_optical_flow_vel(float dt)
 
 	/* velocity in body frame */
 	if(flow_range <= 1.0f && flow_range >= 0.25f && flow_dt > 0.05f){
-	float alpha = 0.5f ; 
+	float alpha = 0.9f ; 
 		_vel_flow(0) = alpha*_vel_flow(0) + (1-alpha)*flow_range * flow_x / flow_dt ; /*default  = 0 */
 		_vel_flow(1) = alpha*_vel_flow(1) + (1-alpha)*flow_range * flow_y / flow_dt ; /*default != 0 */
 		_vel_flow(2) = alpha*_vel_flow(2) + (1-alpha)*flow_range * flow_z / flow_dt ; /*default != 0 */
@@ -646,6 +657,8 @@ MulticopterPositionControl::parameters_update(bool force)
 	if (updated || force) {
 		/* update C++ param system */
 		updateParams();
+
+		param_get(_params_handles.man_curve, &_params.man_curve);
 
 		param_get(_params_handles.hum_pitch, &_params.hum_pitch);
 		param_get(_params_handles.hum_flow_p, &_params.hum_flow_p);
@@ -2603,6 +2616,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 	/* velocity error */
 	math::Vector<3> vel_err = _vel_sp - _vel;
 
+	/* humming */
 	if (_params.hum_flow_aid)
 	{
 		cal_optical_flow_vel(dt);
@@ -2627,8 +2641,8 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 	}
 	
 	if (!_control_mode.flag_control_velocity_enabled && !_control_mode.flag_control_acceleration_enabled) {
-		thrust_sp(0) = 0.0f;
-		thrust_sp(1) = 0.0f;
+		thrust_sp(0) = 0.0f;		
+		thrust_sp(1) = 0.0f;	
 	}
 
 	if (!in_auto_takeoff() && !manual_wants_takeoff()) {
@@ -2967,12 +2981,24 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		 * This allows a simple limitation of the tilt angle, the vehicle flies towards the direction that the stick
 		 * points to, and changes of the stick input are linear.
 		 */
-		float x = (_manual.x * _manual.x * _manual.x + _manual.x) * 0.5f * _params.man_tilt_max;
-		float y = (_manual.y * _manual.y * _manual.y + _manual.y) * 0.5f * _params.man_tilt_max;
+		float x = ((1-_params.man_curve)*(_manual.x * _manual.x * _manual.x) + (_params.man_curve)*_manual.x) * _params.man_tilt_max;
+		float y = ((1-_params.man_curve)*(_manual.y * _manual.y * _manual.y) + (_params.man_curve)*_manual.y) * _params.man_tilt_max;
+
+		/* humming */
+		/* near wall */
+		/* humming */
+		if (_params.hum_flow_aid)
+		{
+			if(flow_range <= 1.0f && flow_range >= 0.25f && flow_dt > 0.05f){
+				y = y - 0.1f*( -(_vel(0)+_vel_flow(0))*sinf(_yaw)+(_vel(1)+_vel_flow(1))*cosf(_yaw) ) ;
+				y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max); 
+			}
+		}
+
 
 		if (_control_mode.flag_control_humming_enabled)
 		{
-			x = _params.hum_pitch*M_PI_F/180.0f;
+			x = _params.hum_pitch*M_PI_F/180.0f;			
 			//y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
 			//y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
 		}
