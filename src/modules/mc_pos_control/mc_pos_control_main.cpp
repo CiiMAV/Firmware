@@ -2941,8 +2941,17 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		if (fabsf(yaw_offs) < yaw_offset_max ||
 		    (_att_sp.yaw_sp_move_rate > 0 && yaw_offs < 0) ||
 		    (_att_sp.yaw_sp_move_rate < 0 && yaw_offs > 0)) {
-			_att_sp.yaw_body = yaw_target;
-		}
+			/* humming */
+			if (_params.hum_flow_aid && flow_range <= 0.5f && flow_range >= 0.25f && flow_dt > 0.05f)
+			{
+				const float beta = 0.99f ;
+				_att_sp.yaw_body = _wrap_pi( ((1-beta)*_yaw + (beta)*yaw_target ) );
+			}
+			else
+			{
+				_att_sp.yaw_body = yaw_target;
+			}
+		}				
 	}
 
 	/* control throttle directly if no climb rate controller is active */
