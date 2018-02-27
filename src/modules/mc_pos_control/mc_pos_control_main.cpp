@@ -3016,7 +3016,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		{   
 			if (PX4_ISFINITE(_vel(0))  && PX4_ISFINITE(_vel(1)) )
 			{
-				if ( (_vel(0)*cosf(_yaw) + _vel(1)*sinf(_yaw)) <= 0.7f && (_vel(0)*cosf(_yaw) + _vel(1)*sinf(_yaw)) >= 0.5f )
+				if ( (_vel(0)*cosf(_yaw) + _vel(1)*sinf(_yaw)) <= 0.7f && (_vel(0)*cosf(_yaw) + _vel(1)*sinf(_yaw)) >= -0.5f )
 				{				
 					/* acive when range below 1 meter and x velocity less than 0.7 m/s */
 					if(flow_range <= 1.0f && flow_range >= 0.25f && flow_dt > 0.05f){
