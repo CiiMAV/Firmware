@@ -2674,7 +2674,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 	math::Vector<3> vel_err = _vel_sp ;
 
 	/* humming */
-	if (_params.hum_flow_aid)
+	if (_params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
 	{
 		cal_optical_flow_vel(dt);
 		//_vel_flow(0) = _params.hum_flow_p_z*_vel_flow(0);
