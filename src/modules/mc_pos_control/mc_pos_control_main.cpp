@@ -241,6 +241,8 @@ private:
 		param_t hum_flow_p_z;
 		param_t hum_flow_p_y;
 		param_t hum_flow_p_z_est;
+		param_t hum_flow_Q;
+		param_t hum_flow_pos_KF;
 
 		param_t hum_flow_rot;
 
@@ -285,6 +287,7 @@ private:
 		float hum_flow_p_z;
 		float hum_flow_p_y;
 		float hum_flow_p_z_est;
+		bool hum_flow_pos_KF;
 
 		float hum_flow_rot;
 
@@ -595,6 +598,8 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params_handles.hum_flow_p_z = param_find("HUM_FLOW_P_Z");
 	_params_handles.hum_flow_p_y = param_find("HUM_FLOW_P_Y");
 	_params_handles.hum_flow_p_z_est = param_find("HUM_FLOW_P_Z_EST");
+	_params_handles.hum_flow_Q = param_find("HUM_FLOW_Q");
+	_params_handles.hum_flow_pos_KF = param_find("HUM_FLOW_POS_KF");
 
 	_params_handles.hum_flow_rot = param_find("HUM_FLOW_ROT");
 
@@ -691,12 +696,15 @@ MulticopterPositionControl::parameters_update(bool force)
 		param_get(_params_handles.hum_flow_p_z, &_params.hum_flow_p_z);
 		param_get(_params_handles.hum_flow_p_y, &_params.hum_flow_p_y);
 		param_get(_params_handles.hum_flow_p_z_est, &_params.hum_flow_p_z_est);
+		param_get(_params_handles.hum_flow_Q , &_z_Q);
 
 		int32_t i_b;
 		param_get(_params_handles.hum_flow_rot, &i_b);
 		_params.hum_flow_rot = (int32_t)i_b;
 		param_get(_params_handles.hum_flow_aid, &i_b);
 		_params.hum_flow_aid = (bool)i_b;
+		param_get(_params_handles.hum_flow_pos_KF, &i_b);
+		_params.hum_flow_pos_KF = (bool)i_b;
 
 
 		/* update legacy C interface params */
@@ -2536,29 +2544,25 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 
 	if (_run_alt_control) {
 		if (PX4_ISFINITE(_pos_sp(2))) {
-			if (_params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
+			if (_params.hum_flow_pos_KF
+				&& _params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f
+				&& PX4_ISFINITE(_vel_flow(2)) && PX4_ISFINITE(_pos(2)) && PX4_ISFINITE(dt) && PX4_ISFINITE(_z_P)
+				&& _vel_flow(2) <= 2.0f && _vel_flow(2) >= -2.0f)
 			{
-				if (PX4_ISFINITE(_vel_flow(2)) && PX4_ISFINITE(_pos(2)) && PX4_ISFINITE(dt) && PX4_ISFINITE(_z_P))
-				{
-					if (_vel_flow(2) <= 2.0f && _vel_flow(2) >= -2.0f)
-					{	
-						/* humming */
-						/* run kalman filter */
-						/* Prediction */
-						_z_flow = _z_flow_ + _vel_flow(2)*dt ; 
-						_z_P_ = _z_P + _z_Q ; 
-
-						/* update */
-						// K_k = P_k- / (P_k- + R)
-						float K_k = _z_P_ / (_z_P_ + _z_R) ; 
-						// x_hat_k = x_hat_k- + K_k(Z_k - H*x_hat_k-)
-						_z_flow_ = _z_flow  + K_k*(_pos(2) - _z_flow ) ;
-						// output
-						_pos(2) = _z_flow_ ;
-						// P_k = (1 - K_k)*P_k- 
-						_z_P = (1-K_k)*_z_P_ ;
-					}
-				}
+				/* humming */
+				/* run kalman filter */
+				/* Prediction */
+				_z_flow = _z_flow_ + _vel_flow(2)*dt ; 
+				_z_P_ = _z_P + _z_Q ; 
+				/* update */
+				// K_k = P_k- / (P_k- + R)
+				float K_k = _z_P_ / (_z_P_ + _z_R) ; 
+				// x_hat_k = x_hat_k- + K_k(Z_k - H*x_hat_k-)
+				_z_flow_ = _z_flow  + K_k*(_pos(2) - _z_flow ) ;
+				// output
+				_pos(2) = _z_flow_ ;
+				// P_k = (1 - K_k)*P_k- 
+				_z_P = (1-K_k)*_z_P_ ;
 			}
 			else{
 				/* reset */
@@ -2674,7 +2678,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 	math::Vector<3> vel_err = _vel_sp ;
 
 	/* humming */
-	if (_params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
+	if (_params.hum_flow_aid && _params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
 	{
 		cal_optical_flow_vel(dt);
 		//_vel_flow(0) = _params.hum_flow_p_z*_vel_flow(0);
@@ -3009,11 +3013,12 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		    (_att_sp.yaw_sp_move_rate > 0 && yaw_offs < 0) ||
 		    (_att_sp.yaw_sp_move_rate < 0 && yaw_offs > 0)) {
 			/* humming */
-			/* slowly move yaw setpoint when contact the wall */
+			/* slowly moving yaw setpoint when contacted the wall */
 			if (_params.hum_flow_aid && flow_range <= 0.47f && flow_range >= 0.25f && flow_dt > 0.05f && fabsf(_manual.r) < 0.1f)
 			{
-				const float beta = 0.89f ;
-				_att_sp.yaw_body = _wrap_pi( ((1-beta)*_yaw + (beta)*yaw_target ) );
+				//const float beta = 0.89f ;
+				//_att_sp.yaw_body = _wrap_pi( ((1-beta)*_yaw + (beta)*yaw_target ) );
+				_att_sp.yaw_body = yaw_target;
 			}
 			else
 			{

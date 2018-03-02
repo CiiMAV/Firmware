@@ -709,6 +709,17 @@ start(int argc, char *argv[])
 	const char *myoptarg = nullptr;
 	uint8_t sonar_rotation = distance_sensor_s::ROTATION_DOWNWARD_FACING;
 
+	/* humming */
+	param_t sonar_rot = param_find("HUM_FLOW_SON_ROT");
+
+	/* only set it if the parameter exists */
+	if (sonar_rot != PARAM_INVALID) {
+		int32_t val = 25; // the recommended installation for the flow sensor is with the Y sensor axis forward
+		param_get(sonar_rot, &val);
+
+		sonar_rotation = (enum Rotation)val;
+	}
+
 	while ((ch = px4_getopt(argc, argv, "a:i:R:", &myoptind, &myoptarg)) != EOF) {
 		switch (ch) {
 		case 'a':
