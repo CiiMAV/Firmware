@@ -238,6 +238,7 @@ private:
 
 		param_t hum_pitch;
 		param_t hum_flow_aid;
+		param_t hum_sliding;
 		param_t hum_flow_p_z;
 		param_t hum_flow_p_y;
 		param_t hum_flow_p_z_est;
@@ -284,6 +285,7 @@ private:
 
 		float hum_pitch;
 		bool hum_flow_aid;
+		bool hum_sliding;
 		float hum_flow_p_z;
 		float hum_flow_p_y;
 		float hum_flow_p_z_est;
@@ -595,6 +597,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 
 	_params_handles.hum_pitch = param_find("HUM_PITCH");
 	_params_handles.hum_flow_aid = param_find("HUM_FLOW_AID");
+	_params_handles.hum_sliding  = param_find("HUM_SLIDING");
 	_params_handles.hum_flow_p_z = param_find("HUM_FLOW_P_Z");
 	_params_handles.hum_flow_p_y = param_find("HUM_FLOW_P_Y");
 	_params_handles.hum_flow_p_z_est = param_find("HUM_FLOW_P_Z_EST");
@@ -703,6 +706,8 @@ MulticopterPositionControl::parameters_update(bool force)
 		_params.hum_flow_rot = (int32_t)i_b;
 		param_get(_params_handles.hum_flow_aid, &i_b);
 		_params.hum_flow_aid = (bool)i_b;
+		param_get(_params_handles.hum_sliding, &i_b);
+		_params.hum_sliding = (bool)i_b;
 		param_get(_params_handles.hum_flow_pos_KF, &i_b);
 		_params.hum_flow_pos_KF = (bool)i_b;
 
@@ -2678,20 +2683,19 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 	math::Vector<3> vel_err = _vel_sp ;
 
 	/* humming */
-	if (_params.hum_flow_aid && _params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
+	if (_params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
 	{
 		cal_optical_flow_vel(dt);
 		//_vel_flow(0) = _params.hum_flow_p_z*_vel_flow(0);
 		//_vel_flow(1) = _params.hum_flow_p_z*_vel_flow(1);
-		_vel_flow(2) = _params.hum_flow_p_z*_vel_flow(2);
+		//_vel_flow(2) = 
 		//warn("vel flow: %d %d %d", (int)(1000.0f*_vel_flow(0)) , (int)(1000.0f*_vel_flow(1)) , (int)(1000.0f*_vel_flow(2)));
 
 		/* velocity error */
 		vel_err(0) = vel_err(0) - _vel(0);
 		vel_err(1) = vel_err(1) - _vel(1);
 		vel_err(2) = vel_err(2) - _params.hum_flow_p_z_est*_vel(2);
-
-		vel_err(2) = vel_err(2) - _vel_flow(2) ; 
+		vel_err(2) = vel_err(2) - _params.hum_flow_p_z*(_vel_flow(2)*math::constrain((dt/flow_dt),0.0f,0.05f)); ; 
 	}
 	else{
 		/* velocity error */
@@ -2709,6 +2713,10 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		
 		thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d)
 			    + _thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover);
+		if (_params.hum_flow_aid && _params.hum_sliding && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
+		{
+			thrust_sp(2) += 0.05f*tanhf(10.f*(_vel_sp(2)-_vel_flow(2)));
+		}
 	}
 	
 	if (!_control_mode.flag_control_velocity_enabled && !_control_mode.flag_control_acceleration_enabled) {
@@ -3080,17 +3088,13 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 
 		if (_control_mode.flag_control_humming_enabled  && !_vehicle_land_detected.landed)
 		{   
-			if (PX4_ISFINITE(_vel(0))  && PX4_ISFINITE(_vel(1)) )
-			{
-				if ( (_vel(0)*cosf(_yaw) + _vel(1)*sinf(_yaw)) <= 0.7f && (_vel(0)*cosf(_yaw) + _vel(1)*sinf(_yaw)) >= -0.5f )
-				{				
-					/* acive when range below 1 meter and x velocity less than 0.7 m/s */
-					if(flow_range <= 1.0f && flow_range >= 0.25f && flow_dt > 0.05f){
-						x += _params.hum_pitch*M_PI_F/180.0f ; 
-						x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max);
-					}
-				}
-			}						
+			/* acive when range below 1 meter and x velocity less than 0.7 m/s */
+			if(flow_range <= 1.2f && flow_range >= 0.25f && flow_dt > 0.05f){
+				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max*0.1f);
+				x += _params.hum_pitch*M_PI_F/180.0f ; 
+				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max);
+			}
+									
 			//y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
 			//y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
 		}
