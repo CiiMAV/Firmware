@@ -2695,7 +2695,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		vel_err(0) = vel_err(0) - _vel(0);
 		vel_err(1) = vel_err(1) - _vel(1);
 		vel_err(2) = vel_err(2) - _params.hum_flow_p_z_est*_vel(2);
-		vel_err(2) = vel_err(2) - _params.hum_flow_p_z*(_vel_flow(2)*math::constrain((dt/flow_dt),0.0f,0.05f)); ; 
+		vel_err(2) = vel_err(2) - _params.hum_flow_p_z*(_vel_flow(2)*math::constrain((dt/flow_dt),0.03f,0.05f)); ; 
 	}
 	else{
 		/* velocity error */
@@ -3088,13 +3088,11 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 
 		if (_control_mode.flag_control_humming_enabled  && !_vehicle_land_detected.landed)
 		{   
-			/* acive when range below 1 meter and x velocity less than 0.7 m/s */
-			if(flow_range <= 1.2f && flow_range >= 0.25f && flow_dt > 0.05f){
+			if(flow_range >= 0.25f){
 				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max*0.1f);
-				x += _params.hum_pitch*M_PI_F/180.0f ; 
+				x = x + _params.hum_pitch*M_PI_F/180.0f ; 
 				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max);
-			}
-									
+			}							
 			//y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
 			//y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
 		}
