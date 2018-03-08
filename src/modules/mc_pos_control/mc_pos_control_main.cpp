@@ -2549,31 +2549,29 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 
 	if (_run_alt_control) {
 		if (PX4_ISFINITE(_pos_sp(2))) {
-			if (_params.hum_flow_pos_KF
-				&& _params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f
-				&& PX4_ISFINITE(_vel_flow(2)) && PX4_ISFINITE(_pos(2)) && PX4_ISFINITE(dt) && PX4_ISFINITE(_z_P)
-				&& _vel_flow(2) <= 2.0f && _vel_flow(2) >= -2.0f)
+			if (_params.hum_flow_pos_KF)
 			{
-				/* humming */
-				/* run kalman filter */
-				/* Prediction */
-				_z_flow = _z_flow_ + _vel_flow(2)*dt ; 
-				_z_P_ = _z_P + _z_Q ; 
-				/* update */
-				// K_k = P_k- / (P_k- + R)
-				float K_k = _z_P_ / (_z_P_ + _z_R) ; 
-				// x_hat_k = x_hat_k- + K_k(Z_k - H*x_hat_k-)
-				_z_flow_ = _z_flow  + K_k*(_pos(2) - _z_flow ) ;
-				// output
-				_pos(2) = _z_flow_ ;
-				// P_k = (1 - K_k)*P_k- 
-				_z_P = (1-K_k)*_z_P_ ;
+				_z_R = 1.0f;
 			}
 			else{
-				/* reset */
-				_z_flow_ = _pos(2);
-				_z_P = 0.0f;
+				_z_R = 0.0f;
 			}
+
+			/* humming */
+			/* run kalman filter */
+			/* Prediction */
+			_z_flow = _z_flow_ + _vel_flow(2)*dt ; 
+			_z_P_ = _z_P + _z_Q ; 
+			/* update */
+			// K_k = P_k- / (P_k- + R)
+			float K_k = _z_P_ / (_z_P_ + _z_R) ; 
+			// x_hat_k = x_hat_k- + K_k(Z_k - H*x_hat_k-)
+			_z_flow_ = _z_flow  + K_k*(_pos(2) - _z_flow ) ;
+			// output
+			_pos(2) = _z_flow_ ;
+			// P_k = (1 - K_k)*P_k- 
+			_z_P = (1-K_k)*_z_P_ ;
+
 			_vel_sp(2) = (_pos_sp(2) - _pos(2)) * _params.pos_p(2);
 
 		} else {
