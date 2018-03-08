@@ -640,8 +640,8 @@ MulticopterPositionControl::cal_optical_flow_vel(float dt)
 	enum Rotation _flow_rot;
 	_flow_rot = (enum Rotation)_params.hum_flow_rot;
 	
-	float flow_x = _optical_flow.pixel_flow_x_integral - _optical_flow.gyro_x_rate_integral ;
-	float flow_y = _optical_flow.pixel_flow_y_integral - _optical_flow.gyro_y_rate_integral ;
+	float flow_x = math::deadzone(_optical_flow.pixel_flow_x_integral,0.005f) - _optical_flow.gyro_x_rate_integral ;
+	float flow_y = math::deadzone(_optical_flow.pixel_flow_y_integral,0.005f) - _optical_flow.gyro_y_rate_integral ;
 	
 	float flow_z = 0.0f ;
 
@@ -2549,29 +2549,6 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 
 	if (_run_alt_control) {
 		if (PX4_ISFINITE(_pos_sp(2))) {
-			if (_params.hum_flow_pos_KF)
-			{
-				_z_R = 1.0f;
-			}
-			else{
-				_z_R = 0.0f;
-			}
-
-			/* humming */
-			/* run kalman filter */
-			/* Prediction */
-			_z_flow = _z_flow_ + _vel_flow(2)*dt ; 
-			_z_P_ = _z_P + _z_Q ; 
-			/* update */
-			// K_k = P_k- / (P_k- + R)
-			float K_k = _z_P_ / (_z_P_ + _z_R) ; 
-			// x_hat_k = x_hat_k- + K_k(Z_k - H*x_hat_k-)
-			_z_flow_ = _z_flow  + K_k*(_pos(2) - _z_flow ) ;
-			// output
-			_pos(2) = _z_flow_ ;
-			// P_k = (1 - K_k)*P_k- 
-			_z_P = (1-K_k)*_z_P_ ;
-
 			_vel_sp(2) = (_pos_sp(2) - _pos(2)) * _params.pos_p(2);
 
 		} else {
@@ -2678,16 +2655,49 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		}
 	}
 
-	math::Vector<3> vel_err = _vel_sp ;
+	cal_optical_flow_vel(dt);
 
+	if (_params.hum_flow_pos_KF)
+	{
+		_z_R = 10.0f;
+	}
+	else
+	{
+		_z_R = 0.005f;
+	}
+
+	if (flow_range >= 0.5f)
+	{
+		warnx("flow_range >=0.5");
+		_z_R = 0.005f;
+	}
+
+	/* humming */
+	/* run kalman filter */
+	/* Prediction */
+	_z_flow = _z_flow_ + _vel_flow(2)*dt ; 
+	_z_P_ = _z_P + _z_Q ; 
+	/* update */
+	// K_k = P_k- / (P_k- + R)
+	float K_k = _z_P_ / (_z_P_ + _z_R) ; 
+	// x_hat_k = x_hat_k- + K_k(Z_k - H*x_hat_k-)
+	_z_flow_ = _z_flow  + K_k*(_pos(2) - _z_flow ) ;
+	warnx("pos: %d , pos_flow: %d",(int)(_pos(2)*1000.0f),(int)(_z_flow_*1000.0f));
+	// output
+	_pos(2) = _z_flow_ ;
+	// P_k = (1 - K_k)*P_k- 
+	_z_P = (1-K_k)*_z_P_ ;
+
+
+	math::Vector<3> vel_err = _vel_sp ;
+	
 	/* humming */
 	if (_params.hum_flow_aid && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
 	{
-		cal_optical_flow_vel(dt);
 		//_vel_flow(0) = _params.hum_flow_p_z*_vel_flow(0);
 		//_vel_flow(1) = _params.hum_flow_p_z*_vel_flow(1);
 		//_vel_flow(2) = 
-		//warn("vel flow: %d %d %d", (int)(1000.0f*_vel_flow(0)) , (int)(1000.0f*_vel_flow(1)) , (int)(1000.0f*_vel_flow(2)));
+		warn("vel flow: %d %d %d", (int)(1000.0f*_vel_flow(0)) , (int)(1000.0f*_vel_flow(1)) , (int)(1000.0f*_vel_flow(2)));
 
 		/* velocity error */
 		vel_err(0) = vel_err(0) - _vel(0);
@@ -2713,7 +2723,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 			    + _thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover);
 		if (_params.hum_flow_aid && _params.hum_sliding && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
 		{
-			thrust_sp(2) += 0.05f*tanhf(10.f*(_vel_sp(2)-_vel_flow(2)));
+			thrust_sp(2) += 0.05f*tanhf(10.f*(-_params.hum_flow_p_z*_vel_flow(2)));
 		}
 	}
 	
@@ -3075,18 +3085,21 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		/* humming */
 		/* active when near wall */
 		/* humming */
-		if (_params.hum_flow_aid && !_vehicle_land_detected.landed)
+		if (_params.hum_flow_aid)// && !_vehicle_land_detected.landed)
 		{
 			if(flow_range <= 0.7f && flow_range >= 0.25f && flow_dt > 0.05f){
+
+				warnx("run y-control");
 				y = _params.hum_flow_p_y*(y - ( -(_vel_flow(0))*sinf(_yaw)+(_vel_flow(1))*cosf(_yaw) )) ;
 				y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max); 
 			}
 		}
 
 
-		if (_control_mode.flag_control_humming_enabled  && !_vehicle_land_detected.landed)
+		if (_control_mode.flag_control_humming_enabled)//  && !_vehicle_land_detected.landed)
 		{   
 			if(flow_range >= 0.25f){
+				warnx("run humming mode");
 				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max*0.1f);
 				x = x + _params.hum_pitch*M_PI_F/180.0f ; 
 				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max);
