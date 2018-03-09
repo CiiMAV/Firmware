@@ -2738,6 +2738,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		
 		thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d)
 			    + _thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover);
+		/* humming */
 		if (_params.hum_flow_aid && _params.hum_sliding && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
 		{
 			thrust_sp(2) += 0.05f*tanhf(10.f*(-_params.hum_flow_p_z*_vel(2)));
@@ -2978,20 +2979,6 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 		_att_sp.pitch_body = euler(1);
 		/* yaw already used to construct rot matrix, but actual rotation matrix can have different yaw near singularity */
 		
-		/* Humming mode 
-		reconstruct rotation matrix then convert to quaternion
-		*/
-		/*if(_control_mode.flag_control_humming_enabled){
-			_att_sp.pitch_body = -10.0f*(M_PI_F/180.0f) ;
-			_R_setpoint = matrix::Eulerf(_att_sp.roll_body, _att_sp.pitch_body, _att_sp.yaw_body);
-			q_sp = _R_setpoint;
-			q_sp.copyTo(_att_sp.q_d);
-			_att_sp.q_d_valid = true;
-		*/
-			/* Don't forget to reset pos setpoint */
-		/*	_reset_pos_sp = true;
-			reset_pos_sp();			
-		}*/
 	} else if (!_control_mode.flag_control_manual_enabled) {
 		/* autonomous altitude control without position control (failsafe landing),
 		 * force level attitude, don't change yaw */
@@ -3027,9 +3014,10 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		hrt_abstime humming_t = hrt_absolute_time();
 		if ( (float)(humming_t - humming_reset_yaw_time_count) >= 10000000.0f)
 		{
+			warnx("reset_yaw");
 			_reset_yaw_sp = true;
 			humming_reset_yaw = false;
-			humming_reseted_yaw = true;
+			//humming_reseted_yaw = true;
 		}
 	}
 
@@ -3057,16 +3045,6 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		if (fabsf(yaw_offs) < yaw_offset_max ||
 		    (_att_sp.yaw_sp_move_rate > 0 && yaw_offs < 0) ||
 		    (_att_sp.yaw_sp_move_rate < 0 && yaw_offs > 0)) {
-			/* humming */
-			/* slowly moving yaw setpoint when contacted the wall */
-			if (_params.hum_flow_aid && flow_range <= 0.47f && flow_range >= 0.25f && flow_dt > 0.05f && fabsf(_manual.r) < 0.1f)
-			{
-				//const float beta = 0.89f ;
-				//_att_sp.yaw_body = _wrap_pi( ((1-beta)*_yaw + (beta)*yaw_target ) );
-				_att_sp.yaw_body = yaw_target;
-			}
-			else
-			{
 				_att_sp.yaw_body = yaw_target;
 			}
 		}				
@@ -3108,18 +3086,24 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		 * This allows a simple limitation of the tilt angle, the vehicle flies towards the direction that the stick
 		 * points to, and changes of the stick input are linear.
 		 */
-		float x = ((1-_params.man_curve)*(_manual.x * _manual.x * _manual.x) + (_params.man_curve)*_manual.x) * _params.man_tilt_max;
-		float y = ((1-_params.man_curve)*(_manual.y * _manual.y * _manual.y) + (_params.man_curve)*_manual.y) * _params.man_tilt_max;
+		
+		//float x = ((1-_params.man_curve)*(_manual.x * _manual.x * _manual.x) + (_params.man_curve)*_manual.x) * _params.man_tilt_max;
+		//float y = ((1-_params.man_curve)*(_manual.y * _manual.y * _manual.y) + (_params.man_curve)*_manual.y) * _params.man_tilt_max;
+
+		float x = ( math::expo(_manual.x,-_params.man_curve) ) * _params.man_tilt_max;
+		float y = ( math::expo(_manual.y,-_params.man_curve) ) * _params.man_tilt_max;
 
 		/* humming */
 		/* active when near wall */
 		/* humming */
+
+
 		if (_params.hum_flow_aid)// && !_vehicle_land_detected.landed)
 		{
-			if(flow_range <= 0.7f && flow_range >= 0.25f && flow_dt > 0.05f){
+			if(flow_range <= 0.5f && flow_range >= 0.25f){
 
-				warnx("run y-control");
-				y = y + _params.hum_flow_p_y*( - math::constrain( -(_vel_flow(0))*sinf(_yaw)+(_vel_flow(1))*cosf(_yaw) , -2.0f, 2.0f) ) ;
+				warnx("y");
+				y = y + _params.hum_flow_p_y*( - math::constrain( -(_vel(0) + _vel_flow(0))*sinf(_yaw)+(_vel(1)+_vel_flow(1))*cosf(_yaw) , -2.0f, 2.0f) ) ;
 				y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max); 
 			}
 		}
@@ -3127,8 +3111,34 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 
 		if (_control_mode.flag_control_humming_enabled)//  && !_vehicle_land_detected.landed)
 		{   
+			math::Vector<3> vel_body = _R * _vel ; 
+
+			float x_control = 0.0f;
+
+			if (flow_range >= 1.0f)
+			{
+				//range_sp = 0.5f 
+				//feedback = (0.5f(-range_sp + flow_range) - vel_body(0))
+				//overdamp transfer function
+				// 0.5/(s^2 +s+0.5)
+				//hum_xvel ~ 10.0f*pi/180
+				x_control = math::radians(_params.hum_xvel)*math::constrain(0.5f(-0.5f + flow_range) - vel_body(0),-0.4f,0.4f) ; 
+			}
+
+			if (flow_range >= 0.7f)
+			{
+				x_control = math::radians(_params.hum_xvel)*math::constrain(0.5f(-0.5f + flow_range) - vel_body(0),-0.25f,0.25f) ; 
+			}
+
+			if (flow_range <= 0.48f && flow_range >= 0.25f)
+			{
+				x_control = math::radians(_params.hum_pitch);
+			}
+
+			x = x + math::constrain(x_control,-math::radians(_params.hum_pitch),math::radians(_params.hum_pitch));
+			/*
 			if(flow_range >= 0.25f){
-				warnx("run humming mode");				
+				warnx("x");				
 				humming_pitch_int += dt ;
 				// 0->5 <-> 0->hum_pitch
 				float humming_trim_pitch = math::gradual(humming_pitch_int,0.0f,5.0f,0.0f,math::radians(_params.hum_pitch) );
@@ -3137,10 +3147,11 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 				x = x + humming_trim_pitch ; 
 				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max);
 			}
+			*/
 			
 			if (flow_range >= 0.25f && flow_range <= 0.50f)
 			{
-				if( humming_reseted_yaw == false && humming_reset_yaw == false )
+				if( humming_reset_yaw == false )
 				{
 					humming_reset_yaw = true;
 					humming_reset_yaw_time_count = hrt_absolute_time();
@@ -3148,7 +3159,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 			}
 			else{
 				humming_reset_yaw = false;
-				humming_reseted_yaw = false;
+				//humming_reseted_yaw = false;
 			}							
 			//y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
 			//y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
@@ -3410,6 +3421,13 @@ MulticopterPositionControl::task_main()
 			_humming_flow.yaw        = _yaw;
 			_humming_flow.yaw_sp     = _att_sp.yaw_body;
 
+			/* humming_flow for logging */
+			if (_humming_flow_pub != nullptr) {
+				orb_publish(ORB_ID(humming_flow), _humming_flow_pub, &_humming_flow);
+			} else {
+				_humming_flow_pub = orb_advertise(ORB_ID(humming_flow), &_humming_flow);
+			}
+
 			/* fill local position, velocity and thrust setpoint */
 			_local_pos_sp.timestamp = hrt_absolute_time();
 			_local_pos_sp.x = _pos_sp(0);
@@ -3475,13 +3493,7 @@ MulticopterPositionControl::task_main()
 				_att_sp_pub = orb_advertise(_attitude_setpoint_id, &_att_sp);
 			}
 
-			/* humming_flow for logging */
-			if (_humming_flow_pub != nullptr) {
-				orb_publish(ORB_ID(humming_flow), _humming_flow_pub, &_humming_flow);
-			} else {
-				_humming_flow_pub = orb_advertise(ORB_ID(humming_flow), &_humming_flow);
 			}
-		}
 	}
 
 	mavlink_log_info(&_mavlink_log_pub, "[mpc] stopped");
