@@ -68,6 +68,7 @@
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/humming_flow.h>
 
 #include <float.h>
 #include <lib/geo/geo.h>
@@ -151,6 +152,7 @@ private:
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
+	orb_advert_t	_humming_flow_pub;
 
 	orb_id_t _attitude_setpoint_id;
 
@@ -165,6 +167,7 @@ private:
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct home_position_s				_home_pos; 				/**< home position */
 	struct optical_flow_s 				_optical_flow; 			/**< optical flow */
+	struct humming_flow_s				_humming_flow;			/**< humming flow */
 
 	control::BlockParamFloat _manual_thr_min; /**< minimal throttle output when flying in manual mode */
 	control::BlockParamFloat _manual_thr_max; /**< maximal throttle output when flying in manual mode */
@@ -338,6 +341,12 @@ private:
 	float _z_Q;
 	float _z_R;
 
+	float humming_pitch_int;
+
+	bool humming_reset_yaw;
+	bool humming_reseted_yaw;
+	hrt_abstime humming_reset_yaw_time_count;
+
 	// counters for reset events on position and velocity states
 	// they are used to identify a reset event
 	uint8_t _z_reset_counter;
@@ -470,6 +479,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	/* publications */
 	_att_sp_pub(nullptr),
 	_local_pos_sp_pub(nullptr),
+	_humming_flow_pub(nullptr),
 	_attitude_setpoint_id(nullptr),
 	_vehicle_status{},
 	_vehicle_land_detected{},
@@ -482,6 +492,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_local_pos_sp{},
 	_home_pos{},
 	_optical_flow{},
+	_humming_flow{},
 	_manual_thr_min(this, "MANTHR_MIN"),
 	_manual_thr_max(this, "MANTHR_MAX"),
 	_xy_vel_man_expo(this, "XY_MAN_EXPO"),
@@ -558,6 +569,12 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_z_P_ = 0.0f;
 	_z_Q = 0.15f*0.5f;
 	_z_R = 0.1f;
+
+	humming_pitch_int = 0.0f;
+
+	humming_reset_yaw = false ;
+	humming_reseted_yaw = false ;
+	humming_reset_yaw_time_count = 0.0f;
 
 	_R.identity();
 	_R_setpoint.identity();
@@ -654,7 +671,7 @@ MulticopterPositionControl::cal_optical_flow_vel(float dt)
 
 	/* velocity in body frame */
 	if(flow_range <= 1.0f && flow_range >= 0.25f && flow_dt > 0.05f){
-	float alpha = 0.77f ; 
+		float alpha = 0.77f ; 
 		_vel_flow(0) = alpha*_vel_flow(0) + (1-alpha)*flow_range * flow_x / flow_dt ; /*default  = 0 */
 		_vel_flow(1) = alpha*_vel_flow(1) + (1-alpha)*flow_range * flow_y / flow_dt ; /*default != 0 */
 		_vel_flow(2) = alpha*_vel_flow(2) + (1-alpha)*flow_range * flow_z / flow_dt ; /*default != 0 */
@@ -2723,7 +2740,7 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 			    + _thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover);
 		if (_params.hum_flow_aid && _params.hum_sliding && flow_range <= 1.0f && flow_range >= 0.25f && flow_dt >= 0.05f)
 		{
-			thrust_sp(2) += 0.05f*tanhf(10.f*(-_params.hum_flow_p_z*_vel_flow(2)));
+			thrust_sp(2) += 0.05f*tanhf(10.f*(-_params.hum_flow_p_z*_vel(2)));
 		}
 	}
 	
@@ -3003,6 +3020,18 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 	// yaw setpoint is integrated over time, but we don't want to integrate the offset's
 	_att_sp.yaw_body -= _man_yaw_offset;
 	_man_yaw_offset = 0.f;
+	/* humming */
+	/* reset yaw_sp every 10 seconds */
+	if (humming_reset_yaw)
+	{
+		hrt_abstime humming_t = hrt_absolute_time();
+		if ( (float)(humming_t - humming_reset_yaw_time_count) >= 10000000.0f)
+		{
+			_reset_yaw_sp = true;
+			humming_reset_yaw = false;
+			humming_reseted_yaw = true;
+		}
+	}
 
 	/* reset yaw setpoint to current position if needed */
 	if (_reset_yaw_sp) {
@@ -3090,7 +3119,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 			if(flow_range <= 0.7f && flow_range >= 0.25f && flow_dt > 0.05f){
 
 				warnx("run y-control");
-				y = _params.hum_flow_p_y*(y - ( -(_vel_flow(0))*sinf(_yaw)+(_vel_flow(1))*cosf(_yaw) )) ;
+				y = y + _params.hum_flow_p_y*( - math::constrain( -(_vel_flow(0))*sinf(_yaw)+(_vel_flow(1))*cosf(_yaw) , -2.0f, 2.0f) ) ;
 				y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max); 
 			}
 		}
@@ -3099,13 +3128,35 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		if (_control_mode.flag_control_humming_enabled)//  && !_vehicle_land_detected.landed)
 		{   
 			if(flow_range >= 0.25f){
-				warnx("run humming mode");
-				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max*0.1f);
-				x = x + _params.hum_pitch*M_PI_F/180.0f ; 
+				warnx("run humming mode");				
+				humming_pitch_int += dt ;
+				// 0->5 <-> 0->hum_pitch
+				float humming_trim_pitch = math::gradual(humming_pitch_int,0.0f,5.0f,0.0f,math::radians(_params.hum_pitch) );
+				// 0-> -5 <-> 1->0.1
+				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max*math::gradual(-humming_pitch_int,-5.0f,0.0f,0.1f,1.0f));
+				x = x + humming_trim_pitch ; 
 				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max);
+			}
+			
+			if (flow_range >= 0.25f && flow_range <= 0.50f)
+			{
+				if( humming_reseted_yaw == false && humming_reset_yaw == false )
+				{
+					humming_reset_yaw = true;
+					humming_reset_yaw_time_count = hrt_absolute_time();
+				}
+			}
+			else{
+				humming_reset_yaw = false;
+				humming_reseted_yaw = false;
 			}							
 			//y = (_manual.y*2.0f - (-_vel(0)*sinf(_yaw)+_vel(1)*cosf(_yaw)) )*0.1f;
 			//y = math::constrain(y,-_params.man_tilt_max,_params.man_tilt_max);
+		}
+		else{
+			humming_pitch_int = 0.0f;
+			humming_reset_yaw = false;
+			humming_reseted_yaw = false;
 		}
 		// we want to fly towards the direction of (x, y), so we use a perpendicular axis angle vector in the XY-plane
 		matrix::Vector2f v = matrix::Vector2f(y, -x);
@@ -3348,6 +3399,17 @@ MulticopterPositionControl::task_main()
 
 			do_control(dt);
 
+			/* fill humming_flow for logging */
+			_humming_flow.timestamp  = hrt_absolute_time();
+			_humming_flow.vel_flow_x = _vel_flow(0);
+			_humming_flow.vel_flow_y = _vel_flow(1);
+			_humming_flow.vel_flow_z = _vel_flow(2);
+			_humming_flow.flow_range = flow_range ;
+			_humming_flow.z_flow     = _z_flow_;
+			_humming_flow.z_est      = _local_pos.z;
+			_humming_flow.yaw        = _yaw;
+			_humming_flow.yaw_sp     = _att_sp.yaw_body;
+
 			/* fill local position, velocity and thrust setpoint */
 			_local_pos_sp.timestamp = hrt_absolute_time();
 			_local_pos_sp.x = _pos_sp(0);
@@ -3411,6 +3473,13 @@ MulticopterPositionControl::task_main()
 
 			} else if (_attitude_setpoint_id) {
 				_att_sp_pub = orb_advertise(_attitude_setpoint_id, &_att_sp);
+			}
+
+			/* humming_flow for logging */
+			if (_humming_flow_pub != nullptr) {
+				orb_publish(ORB_ID(humming_flow), _humming_flow_pub, &_humming_flow);
+			} else {
+				_humming_flow_pub = orb_advertise(ORB_ID(humming_flow), &_humming_flow);
 			}
 		}
 	}
