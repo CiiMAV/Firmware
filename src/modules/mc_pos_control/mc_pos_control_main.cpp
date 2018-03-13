@@ -2608,6 +2608,7 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 			/* update */
 			// K_k = P_k- / (P_k- + R)
 			float K_k = _z_P_ / (_z_P_ + _z_R) ; 
+			K_k = math::constrain(K_k,0.0f,1.0f);
 			// x_hat_k = x_hat_k- + K_k(Z_k - H*x_hat_k-)
 			_z_flow_ = _z_flow  + K_k*(_pos(2) - _z_flow ) ;
 			//warnx("pos: %d , pos_flow: %d",(int)(_pos(2)*1000.0f),(int)(_z_flow_*1000.0f));
@@ -3423,6 +3424,7 @@ MulticopterPositionControl::task_main()
 			/* swap for logging */
 			_humming_flow.flow_range = _optical_flow.ground_distance_m;
 			_humming_flow.wall_distance = flow_range;
+
 			_humming_flow.flow_dt    = flow_dt;
 			_humming_flow.z_flow     = _z_flow_;
 			_humming_flow.z_est      = _local_pos.z;
