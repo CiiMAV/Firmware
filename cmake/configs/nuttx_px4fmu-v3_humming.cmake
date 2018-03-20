@@ -62,6 +62,7 @@ set(config_module_list
 	drivers/teraranger
 	drivers/ulanding
 	drivers/vmount
+	drivers/tfmini
 	modules/sensors
 
 	#

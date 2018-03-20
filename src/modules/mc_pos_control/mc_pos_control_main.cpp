@@ -727,6 +727,7 @@ MulticopterPositionControl::parameters_update(bool force)
 		param_get(_params_handles.man_curve, &_params.man_curve);
 
 		param_get(_params_handles.hum_pitch, &_params.hum_pitch);
+		_params.hum_pitch = math::radians(_params.hum_pitch);
 		param_get(_params_handles.hum_pitch_p, &_params.hum_pitch_p);
 		param_get(_params_handles.hum_pitch_i, &_params.hum_pitch_i);
 		param_get(_params_handles.hum_pitch_v, &_params.hum_pitch_v);
@@ -2618,7 +2619,10 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 			_z_P = (1-K_k)*_z_P_ ;
 
 			_vel_sp(2) = (_pos_sp(2) - _pos(2)) * _params.pos_p(2);
-			
+			if (flow_range >= 0.25f && flow_range <= 0.5f)
+			{
+				_vel_sp(2) = (_pos_sp(2) - _pos(2)) * _params.pos_p(2)*0.5f ; 
+			}
 		} else {
 			_vel_sp(2) = 0.0f;
 			warn_rate_limited("Caught invalid pos_sp in z");
