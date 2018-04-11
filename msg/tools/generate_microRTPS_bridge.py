@@ -125,7 +125,10 @@ if del_tree:
 
 if agent and os.path.isdir(agent_out_dir + "/idl"):
     shutil.rmtree(agent_out_dir + "/idl")
+print len(msg_folder)
 
+msg_folder = msg_folder[:32-4]
+print msg_folder
 uorb_templates_dir = msg_folder + "/templates/uorb_microcdr"
 urtps_templates_dir = msg_folder + "/templates/urtps"
 

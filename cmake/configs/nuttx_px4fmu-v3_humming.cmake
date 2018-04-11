@@ -213,4 +213,8 @@ set(config_module_list
 
 	# Humming App
 	modules/humming
+	modules/micrortps_bridge
+
+	# Test
+	#examples/eprosima_cdr
 )

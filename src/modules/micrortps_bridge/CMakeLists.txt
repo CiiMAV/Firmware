@@ -45,8 +45,8 @@ set(config_rtps_send_topics
    )
 
 set(config_rtps_receive_topics
-   sensor_baro
-   optical_flow
+   #sensor_baro
+   #optical_flow
    )
 
 if (FASTRTPSGEN AND (config_rtps_send_topics OR config_rtps_receive_topics))
