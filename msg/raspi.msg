@@ -1,1 +1,1 @@
-char[20] msg
+uint32 val

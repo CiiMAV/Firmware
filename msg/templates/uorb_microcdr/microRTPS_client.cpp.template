@@ -195,10 +195,13 @@ void micrortps_start_topics(struct timespec &begin, int &total_read, uint32_t &r
 @[for topic in recv_topics]@
                 case @(message_id(topic)):
                 {
+                    printf("case: %d\n",@(message_id(topic)));
                     deserialize_@(topic)(&@(topic)_data, data_buffer, &microCDRReader);
                     if (!@(topic)_pub) {
+                        printf("advertise\n");
                         @(topic)_pub = orb_advertise(ORB_ID(@(topic)), &@(topic)_data);
                     } else {
+                        printf("publist\n");
                         orb_publish(ORB_ID(@(topic)), @(topic)_pub, &@(topic)_data);
                     }
                     ++received;
