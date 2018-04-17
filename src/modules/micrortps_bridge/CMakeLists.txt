@@ -41,11 +41,12 @@ if(NOT FASTRTPSGEN)
 endif()
 
 set(config_rtps_send_topics
-   sensor_combined
+   #sensor_combined
+   sensor_baro
    )
 
 set(config_rtps_receive_topics
-   #sensor_baro
+   sensor_baro
    #optical_flow
    )
 

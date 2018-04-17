@@ -86,7 +86,10 @@ Transport_node::~Transport_node()
 }
 
 uint16_t Transport_node::crc16_byte(uint16_t crc, const uint8_t data)
-{
+{	
+	printf("index = %u\n", (crc ^ data) & 0xff );
+	printf("crc_lookup = %u\n", crc16_table[(crc ^ data) & 0xff] );
+	printf("output = %u\n", (crc >> 8) ^ crc16_table[(crc ^ data) & 0xff] );
 	return (crc >> 8) ^ crc16_table[(crc ^ data) & 0xff];
 }
 
