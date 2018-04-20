@@ -1,11 +1,17 @@
 #include <px4_config.h>
+#include <px4_defines.h>
 #include <px4_tasks.h>
 #include <px4_posix.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <poll.h>
 #include <string.h>
 #include <termios.h>
+
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include <uORB/uORB.h>
 #include <uORB/topics/sensor_combined.h>
@@ -25,15 +31,19 @@ int eprosima_cdr_main(int argc, char *argv[])
     int serial_fd = uart_init(argv[1], 115200);
 
 	int sensor_sub_fd = orb_subscribe(ORB_ID(sensor_combined));
-	orb_set_interval(sensor_sub_fd, 200);
+	//orb_set_interval(sensor_sub_fd, 200);
 	px4_pollfd_struct_t fds[] = {
 		{ .fd = sensor_sub_fd,   .events = POLLIN },
 	};
 
 	int error_counter = 0;
-
-	for (int i = 0; i < 50; i++) {
-		int poll_ret = px4_poll(fds, 1, 1000);
+    int send_amount = 50; 
+    if (argc == 3)
+    {
+        send_amount = strtoul(argv[2], NULL, 10);
+    }
+	for (int i = 0; i < send_amount; i++) {
+		int poll_ret = px4_poll(fds, 1, 50);
 
 		if (poll_ret == 0) {
 			PX4_ERR("Got no data within a second");
@@ -75,7 +85,7 @@ int eprosima_cdr_main(int argc, char *argv[])
 int uart_init(const char * uart_name, uint32_t speed){
 
     // Open a serial port
-    int serial_fd = open(uart_name, O_RDWR | O_NOCTTY);
+    int serial_fd = open(uart_name, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
     if (serial_fd < 0) {
         err(1, "failed to open port: %s", uart_name);
@@ -93,7 +103,8 @@ int uart_init(const char * uart_name, uint32_t speed){
 
     // Clear ONLCR flag (which appends a CR for every LF)
     uart_config.c_oflag &= ~ONLCR;
-
+    //
+    
     // USB serial is indicated by /dev/ttyACM0
     if (strcmp(uart_name, "/dev/ttyACM0") != OK && strcmp(uart_name, "/dev/ttyACM1") != OK) {
         // Set baud rate
@@ -102,12 +113,14 @@ int uart_init(const char * uart_name, uint32_t speed){
             close(serial_fd);
             return -1;
         }
-    }
+    } 
 
     if ((termios_state = tcsetattr(serial_fd, TCSANOW, &uart_config)) < 0) {
         warnx("ERR SET CONF %s\n", uart_name);
         close(serial_fd);
         return -1;
     }
+
+    
     return serial_fd;
 }

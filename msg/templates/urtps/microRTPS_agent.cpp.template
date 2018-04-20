@@ -273,15 +273,25 @@ int main(int argc, char** argv)
     {
 @[if send_topics]@
         ++loop;
+        if( loop % 1000 == 0){
+            std::cout << loop << "\n" << std::endl;
+        }
         if (!receiving) start = std::chrono::steady_clock::now();
         // Publish messages received from UART
-        while (0 < (length = transport_node->read(&topic_ID, data_buffer, BUFFER_SIZE)))
+        while (1)
         {
-            topics.publish(topic_ID, data_buffer, sizeof(data_buffer));
-            ++received;
-            total_read += length;
-            receiving = true;
-            end = std::chrono::steady_clock::now();
+            length = transport_node->read(&topic_ID, data_buffer, BUFFER_SIZE) ;
+
+            if( 0 < length){
+                topics.publish(topic_ID, data_buffer, sizeof(data_buffer));
+                ++received;
+                total_read += length;
+                receiving = true;
+                end = std::chrono::steady_clock::now();
+            }else{
+                std::cout << length <<"\n" << std::endl;
+                break;
+            }
         }
 
         if ((receiving && std::chrono::duration<double>(std::chrono::steady_clock::now() - end).count() > WAIT_CNST) ||

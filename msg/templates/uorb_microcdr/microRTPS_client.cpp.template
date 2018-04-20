@@ -126,6 +126,9 @@ void* send(void* /*unused*/)
 
         usleep(_options.sleep_ms*1000);
         ++loop;
+        if( loop % 1000 == 0){
+            warn("L: %d\n",loop);
+        }
     }
 
     struct timespec end;
