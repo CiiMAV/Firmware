@@ -1,0 +1,5 @@
+struct raspi_
+{
+	float value;
+
+}; // struct raspi_

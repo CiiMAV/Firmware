@@ -123,6 +123,7 @@ set(msg_files
 	wind_estimate.msg
 
 	humming_flow.msg
+	raspi.msg
 	)
 
 px4_add_git_submodule(TARGET git_gencpp PATH tools/gencpp)

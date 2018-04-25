@@ -233,7 +233,7 @@ Mavlink::Mavlink() :
 	_subscribe_to_stream(nullptr),
 	_subscribe_to_stream_rate(0.0f),
 	_udp_initialised(false),
-	_flow_control_enabled(false),
+	_flow_control_mode(Mavlink::FLOW_CONTROL_OFF),
 	_last_write_success_time(0),
 	_last_write_try_time(0),
 	_mavlink_start_time(0),
@@ -674,7 +674,7 @@ int Mavlink::get_component_id()
 	return mavlink_system.compid;
 }
 
-int Mavlink::mavlink_open_uart(int baud, const char *uart_name)
+int Mavlink::mavlink_open_uart(int baud, const char *uart_name, bool force_flow_control)
 {
 #ifndef B460800
 #define B460800 460800
@@ -847,30 +847,25 @@ int Mavlink::mavlink_open_uart(int baud, const char *uart_name)
 		return -1;
 	}
 
-	if (!_is_usb_uart) {
-		/*
-		 * Setup hardware flow control. If the port has no RTS pin this call will fail,
-		 * which is not an issue, but requires a separate call so we can fail silently.
-		 */
+	/*
+	 * Setup hardware flow control. If the port has no RTS pin this call will fail,
+	 * which is not an issue, but requires a separate call so we can fail silently.
+	 */
 
-		/* setup output flow control */
-		if (enable_flow_control(true)) {
-			PX4_WARN("hardware flow control not supported");
-		}
-
-	} else {
-		_flow_control_enabled = false;
+	/* setup output flow control */
+	if (enable_flow_control(force_flow_control ? FLOW_CONTROL_ON : FLOW_CONTROL_OFF)) {
+		PX4_WARN("hardware flow control not supported");
 	}
 
 	return _uart_fd;
 }
 
 int
-Mavlink::enable_flow_control(bool enabled)
+Mavlink::enable_flow_control(enum FLOW_CONTROL_MODE mode)
 {
 	// We can't do this on USB - skip
 	if (_is_usb_uart) {
-		_flow_control_enabled = false;
+		_flow_control_mode = FLOW_CONTROL_OFF;
 		return OK;
 	}
 
@@ -878,7 +873,7 @@ Mavlink::enable_flow_control(bool enabled)
 
 	int ret = tcgetattr(_uart_fd, &uart_config);
 
-	if (enabled) {
+	if (mode) {
 		uart_config.c_cflag |= CRTSCTS;
 
 	} else {
@@ -889,7 +884,7 @@ Mavlink::enable_flow_control(bool enabled)
 	ret = tcsetattr(_uart_fd, TCSANOW, &uart_config);
 
 	if (!ret) {
-		_flow_control_enabled = enabled;
+		_flow_control_mode = mode;
 	}
 
 	return ret;
@@ -940,7 +935,7 @@ Mavlink::get_free_tx_buf()
 		buf_free = 256;
 #endif
 
-		if (get_flow_control_enabled() && buf_free < FLOW_CONTROL_DISABLE_THRESHOLD) {
+		if (_flow_control_mode == FLOW_CONTROL_AUTO && buf_free < FLOW_CONTROL_DISABLE_THRESHOLD) {
 			/* Disable hardware flow control:
 			 * if no successful write since a defined time
 			 * and if the last try was not the last successful write
@@ -948,7 +943,7 @@ Mavlink::get_free_tx_buf()
 			if (_last_write_try_time != 0 &&
 			    hrt_elapsed_time(&_last_write_success_time) > 500 * 1000UL &&
 			    _last_write_success_time != _last_write_try_time) {
-				enable_flow_control(false);
+				enable_flow_control(FLOW_CONTROL_OFF);
 			}
 		}
 	}
@@ -1765,6 +1760,7 @@ Mavlink::task_main(int argc, char *argv[])
 	_baudrate = 57600;
 	_datarate = 0;
 	_mode = MAVLINK_MODE_NORMAL;
+	bool _force_flow_control = false;
 
 #ifdef __PX4_NUTTX
 	/* the NuttX optarg handler does not
@@ -1913,6 +1909,10 @@ Mavlink::task_main(int argc, char *argv[])
 			_ftp_on = true;
 			break;
 
+		case 'z':
+			_force_flow_control = true;
+			break;
+
 		default:
 			err_flag = true;
 			break;
@@ -1946,7 +1946,7 @@ Mavlink::task_main(int argc, char *argv[])
 		fflush(stdout);
 
 		/* default values for arguments */
-		_uart_fd = mavlink_open_uart(_baudrate, _device_name);
+		_uart_fd = mavlink_open_uart(_baudrate, _device_name, _force_flow_control);
 
 		if (_uart_fd < 0 && _mode != MAVLINK_MODE_CONFIG) {
 			PX4_ERR("could not open %s", _device_name);
@@ -2598,7 +2598,7 @@ Mavlink::display_status()
 		printf("\tno telem status.\n");
 	}
 
-	printf("\tflow control:\t%s\n", (_flow_control_enabled) ? "ON" : "OFF");
+	printf("\tflow control:\t%s\n", (_flow_control_mode) ? "ON" : "OFF");
 	printf("\trates:\n");
 	printf("\ttx: %.3f kB/s\n", (double)_rate_tx);
 	printf("\ttxerr: %.3f kB/s\n", (double)_rate_txerr);

@@ -179,7 +179,7 @@ ssize_t Transport_node::read(uint8_t *topic_ID, char out_buffer[], size_t buffer
 
 	uint16_t read_crc = ((uint16_t)header->crc_h << 8) | header->crc_l;
 	uint16_t calc_crc = crc16((uint8_t *)rx_buffer + msg_start_pos + header_size, payload_len);
-	printf("%d : %d\n", read_crc,calc_crc);
+
 	if (read_crc != calc_crc) {
 		printf("BAD CRC %u != %u\n", read_crc, calc_crc);
 		printf("                                 (↓ %lu)\n", (unsigned long)(header_size + payload_len));

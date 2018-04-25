@@ -1,0 +1,20 @@
+struct sensor_accel_
+{
+	unsigned long long integral_dt;
+	unsigned long long error_count;
+	float x;
+	float y;
+	float z;
+	float x_integral;
+	float y_integral;
+	float z_integral;
+	float temperature;
+	float range_m_s2;
+	float scaling;
+	unsigned long device_id;
+	short x_raw;
+	short y_raw;
+	short z_raw;
+	short temperature_raw;
+
+}; // struct sensor_accel_

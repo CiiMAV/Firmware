@@ -42,12 +42,14 @@ endif()
 
 set(config_rtps_send_topics
    #sensor_combined
-   sensor_baro
+   #sensor_baro
+   sensor_accel
    )
 
 set(config_rtps_receive_topics
-   sensor_baro
-   #optical_flow
+   #sensor_baro
+   optical_flow
+   raspi
    )
 
 if (FASTRTPSGEN AND (config_rtps_send_topics OR config_rtps_receive_topics))

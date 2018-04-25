@@ -29,6 +29,3 @@ set MIXER_AUX humming
 set PWM_AUX_OUT 123456
 set PWM_AUX_RATE 50
 
-mavlink stop-all
-mavlink start -d /dev/ttyS1 -b 57600
-micrortps_client start -d/dev/ttyACM0
