@@ -617,6 +617,8 @@ void Logger::add_default_topics()
 
 	/* humming flow logging */
 	add_topic("humming_flow");
+	/* raspi logging */
+	add_topic("raspi");
 }
 
 void Logger::add_high_rate_topics()

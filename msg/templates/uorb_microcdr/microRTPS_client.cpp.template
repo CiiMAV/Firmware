@@ -65,6 +65,8 @@ recv_topics = [s.short_name for idx, s in enumerate(spec) if scope[idx] == MsgSc
 #include <px4_time.h>
 #include <uORB/uORB.h>
 
+#include <drivers/drv_hrt.h>
+
 @[for topic in list(set(topic_names))]@
 #include <uORB/topics/@(topic).h>
 #include <uORB_microcdr/topics/@(topic).h>
@@ -196,6 +198,7 @@ void micrortps_start_topics(struct timespec &begin, int &total_read, uint32_t &r
                 case @(message_id(topic)):
                 {
                     deserialize_@(topic)(&@(topic)_data, data_buffer, &microCDRReader);
+                    @(topic)_data.timestamp  = hrt_absolute_time();
                     if (!@(topic)_pub) {
                         @(topic)_pub = orb_advertise(ORB_ID(@(topic)), &@(topic)_data);
                     } else {

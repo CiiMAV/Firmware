@@ -69,6 +69,7 @@
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/humming_flow.h>
+#include <uORB/topics/raspi.h>
 
 #include <float.h>
 #include <lib/geo/geo.h>
@@ -149,6 +150,7 @@ private:
 	int		_pos_sp_triplet_sub;		/**< position setpoint triplet */
 	int		_home_pos_sub; 			/**< home position */
 	int 	_optical_flow_sub;		/**< optical flow front */
+	int 	_raspi_sub;
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
@@ -168,6 +170,7 @@ private:
 	struct home_position_s				_home_pos; 				/**< home position */
 	struct optical_flow_s 				_optical_flow; 			/**< optical flow */
 	struct humming_flow_s				_humming_flow;			/**< humming flow */
+	struct raspi_s 						_raspi;					/**< raspi */
 
 	control::BlockParamFloat _manual_thr_min; /**< minimal throttle output when flying in manual mode */
 	control::BlockParamFloat _manual_thr_max; /**< maximal throttle output when flying in manual mode */
@@ -254,6 +257,8 @@ private:
 
 		param_t hum_flow_rot;
 
+		param_t hum_range_sp;
+
 		param_t man_curve;
 
 	}		_params_handles;		/**< handles for interesting parameters */
@@ -303,6 +308,8 @@ private:
 		bool hum_flow_pos_KF;
 
 		float hum_flow_rot;
+
+		float hum_range_sp;
 
 		float man_curve;
 	} _params{};
@@ -483,7 +490,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_pos_sp_triplet_sub(-1),
 	_home_pos_sub(-1),
 	_optical_flow_sub(-1),
-
+	_raspi_sub(-1),
 	/* publications */
 	_att_sp_pub(nullptr),
 	_local_pos_sp_pub(nullptr),
@@ -501,6 +508,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_home_pos{},
 	_optical_flow{},
 	_humming_flow{},
+	_raspi{},
 	_manual_thr_min(this, "MANTHR_MIN"),
 	_manual_thr_max(this, "MANTHR_MAX"),
 	_xy_vel_man_expo(this, "XY_MAN_EXPO"),
@@ -635,6 +643,8 @@ MulticopterPositionControl::MulticopterPositionControl() :
 
 	_params_handles.hum_flow_rot = param_find("HUM_FLOW_ROT");
 
+	_params_handles.hum_range_sp = param_find("HUM_RANGE_SP");
+
 	_params_handles.man_curve = param_find("MPC_MAN_CURVE");
 	/* fetch initial parameter values */
 	parameters_update(true);
@@ -724,8 +734,10 @@ MulticopterPositionControl::parameters_update(bool force)
 		/* update C++ param system */
 		updateParams();
 
+		/* humming */
 		param_get(_params_handles.man_curve, &_params.man_curve);
 
+		param_get(_params_handles.hum_range_sp, &_params.hum_range_sp);
 		param_get(_params_handles.hum_pitch, &_params.hum_pitch);
 		_params.hum_pitch = math::radians(_params.hum_pitch);
 		param_get(_params_handles.hum_pitch_p, &_params.hum_pitch_p);
@@ -2599,7 +2611,7 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 
 			if (flow_range >= 0.5f)
 			{
-				warnx("flow_range >=0.5");
+				//warnx("flow_range >=0.5");
 				_z_R = 0.0f;
 			}
 	
@@ -3031,7 +3043,19 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 	_man_yaw_offset = 0.f;
 
 	/* humming */
+	bool hum_updated = false;
+	orb_check(_raspi_sub, &hum_updated);
+
+	if (hum_updated) {
+		orb_copy(ORB_ID(raspi), _raspi_sub, &_raspi);
+		warnx("hum_updated");
+	}
+	else{
+		_raspi.value = 0.0f;
+	}
+
 	/* reset yaw_sp every 10 seconds */
+	/*
 	if (humming_reset_yaw)
 	{
 		hrt_abstime humming_t = hrt_absolute_time();
@@ -3044,7 +3068,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 			_humming_flow.reset_yaw = false;
 		}
 	}
-
+	*/
 	/* reset yaw setpoint to current position if needed */
 	if (_reset_yaw_sp) {
 		_reset_yaw_sp = false;
@@ -3061,6 +3085,13 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		const float yaw_offset_max = yaw_rate_max / _params.mc_att_yaw_p;
 
 		_att_sp.yaw_sp_move_rate = _manual.r * yaw_rate_max;
+		/* humming */
+		if (_control_mode.flag_control_humming_enabled)
+		{
+			_att_sp.yaw_sp_move_rate += math::constrain((float)_raspi.value*0.01f,-1.0f,1.0f) * yaw_rate_max;
+		}
+		
+
 		float yaw_target = _wrap_pi(_att_sp.yaw_body + _att_sp.yaw_sp_move_rate * dt);
 		float yaw_offs = _wrap_pi(yaw_target - _yaw);
 
@@ -3069,6 +3100,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		if (fabsf(yaw_offs) < yaw_offset_max ||
 		    (_att_sp.yaw_sp_move_rate > 0 && yaw_offs < 0) ||
 		    (_att_sp.yaw_sp_move_rate < 0 && yaw_offs > 0)) {
+				warnx("set yaw_target");
 				_att_sp.yaw_body = yaw_target;
 		}
 	}
@@ -3136,13 +3168,13 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 			/* pitch control part*/
 			if (PX4_ISFINITE(flow_range))
 			{
-				float range_sp = 0.4f;
-				float range_err = (range_sp - math::constrain(flow_range,0.0f,1.0f));
+				float range_sp = _params.hum_range_sp;
+				float range_err = (range_sp - math::constrain(flow_range,-1.5f,1.5f));
 				range_err = math::constrain(range_err,-1.0f,1.0f);
 				range_err = range_err*range_err*range_err;
 				/* integrator */
 				/* integrator acitive when flow_range <= 0.6 meter */
-				float err_int = math::constrain(range_sp+0.2f - flow_range,0.0f,0.25f);
+				float err_int = math::constrain(0.4f+0.2f - flow_range,0.0f,0.25f);
 				humming_pitch_int += err_int;
 
 				float vel_sp = _params.hum_pitch_p*range_err - _params.hum_pitch_i*humming_pitch_int;  //
@@ -3288,6 +3320,7 @@ MulticopterPositionControl::task_main()
 	_pos_sp_triplet_sub = orb_subscribe(ORB_ID(position_setpoint_triplet));
 	_home_pos_sub = orb_subscribe(ORB_ID(home_position));
 	_optical_flow_sub = orb_subscribe(ORB_ID(optical_flow));
+	_raspi_sub = orb_subscribe(ORB_ID(raspi));
 
 	parameters_update(true);
 
