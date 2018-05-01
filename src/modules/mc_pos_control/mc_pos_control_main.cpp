@@ -3049,11 +3049,13 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 	if (hum_updated) {
 		orb_copy(ORB_ID(raspi), _raspi_sub, &_raspi);
 		warnx("hum_updated");
-	}
-	else{
-		_raspi.value = 0.0f;
-	}
 
+		if (fabsf(_manual.r) <= 0.15f && !_vehicle_land_detected.landed)
+		{
+			_att_sp.yaw_body = _wrap_pi(_yaw + atanf((float)_raspi.value/120.0f));
+		}		
+	}
+	
 	/* reset yaw_sp every 10 seconds */
 	/*
 	if (humming_reset_yaw)
@@ -3085,12 +3087,6 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		const float yaw_offset_max = yaw_rate_max / _params.mc_att_yaw_p;
 
 		_att_sp.yaw_sp_move_rate = _manual.r * yaw_rate_max;
-		/* humming */
-		if (_control_mode.flag_control_humming_enabled)
-		{
-			_att_sp.yaw_sp_move_rate += math::constrain((float)_raspi.value*0.01f,-1.0f,1.0f) * yaw_rate_max;
-		}
-		
 
 		float yaw_target = _wrap_pi(_att_sp.yaw_body + _att_sp.yaw_sp_move_rate * dt);
 		float yaw_offs = _wrap_pi(yaw_target - _yaw);
@@ -3099,9 +3095,11 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		// shifting it, only allow if it would make the offset smaller again.
 		if (fabsf(yaw_offs) < yaw_offset_max ||
 		    (_att_sp.yaw_sp_move_rate > 0 && yaw_offs < 0) ||
-		    (_att_sp.yaw_sp_move_rate < 0 && yaw_offs > 0)) {
-				warnx("set yaw_target");
+		    (_att_sp.yaw_sp_move_rate < 0 && yaw_offs > 0)) {				
 				_att_sp.yaw_body = yaw_target;
+		}
+		else{
+			warnx("ignore yaw_target");
 		}
 	}
 
