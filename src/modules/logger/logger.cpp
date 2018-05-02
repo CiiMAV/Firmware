@@ -619,6 +619,7 @@ void Logger::add_default_topics()
 	add_topic("humming_flow");
 	/* raspi logging */
 	add_topic("raspi");
+	add_topic("sensor_accel_ext");
 }
 
 void Logger::add_high_rate_topics()

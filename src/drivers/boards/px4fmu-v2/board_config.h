@@ -228,6 +228,8 @@
 #define PX4_I2C_OBDEV_HMC5883	0x1e
 #define PX4_I2C_OBDEV_LIS3MDL	0x1e
 
+#define PX4_I2C_MPU6050_ADDR 0x68
+
 /*----------------------------------------------------------*/
 /*           FMUv3 Cube SPI chip selects and DRDY           */
 /*----------------------------------------------------------*/

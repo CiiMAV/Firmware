@@ -16,3 +16,5 @@ int16 z_raw
 int16 temperature_raw
 
 uint32 device_id	# unique device ID for the sensor that does not change between power cycles
+
+# TOPICS sensor_accel sensor_accel_ext

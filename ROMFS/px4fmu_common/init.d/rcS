@@ -716,6 +716,10 @@ then
 		mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
 	fi
 
+	if param compare SYS_AUTOSTART 4100
+	then
+		mpu6000 -I start
+	if
 	#
 	# Logging
 	#
