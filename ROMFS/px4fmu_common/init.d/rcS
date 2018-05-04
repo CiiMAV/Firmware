@@ -1054,7 +1054,7 @@ then
 	mavlink start -d /dev/ttyS2
 	usleep 1000000
 	mavlink stop-all
-	micrortps_client start -d /dev/ttyS2
+	micrortps_client start -d /dev/ttyS2 -l -1
 	mavlink start default
 	led_control reset
 

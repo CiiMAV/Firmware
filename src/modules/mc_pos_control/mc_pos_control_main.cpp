@@ -3050,7 +3050,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		orb_copy(ORB_ID(raspi), _raspi_sub, &_raspi);
 		warnx("hum_updated");
 
-		if (fabsf(_manual.r) <= 0.15f && !_vehicle_land_detected.landed)
+		if (fabsf(_manual.r) <= 0.15f && !_vehicle_land_detected.landed && _control_mode.flag_control_humming_enabled )
 		{
 			_att_sp.yaw_body = _wrap_pi(_yaw + atanf((float)_raspi.value/120.0f));
 		}		
