@@ -3176,6 +3176,13 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 				humming_pitch_int += err_int;
 
 				float vel_sp = _params.hum_pitch_p*range_err - _params.hum_pitch_i*humming_pitch_int;  //
+				/*
+				float braker = 0.0f;
+				if (flow_range >= 0.55f && flow_range <= 0.7f && vel_body(0) >= 0.0f && vel_body(0) <= 1.0f)
+				{
+					braker = math::constrain(_params.hum_pitch_v*vel_body(0)*vel_body(0),-_params.hum_pitch*0.4f,_params.hum_pitch*0.4f);
+				}
+				*/
 				/* minus because reverse direction */
 				x = x - math::constrain(vel_sp + _params.hum_pitch_v*vel_body(0),-_params.hum_pitch,_params.hum_pitch) ;
 

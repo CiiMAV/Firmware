@@ -117,15 +117,6 @@ public:
 	void		drop();
 	void		lock_release();
 
-	/*
-	 *  new function
-	 */
-	void		goto_pos(float x , float y);
-	void 		goto_home();
-	void 		liquid_pos(float z);
-	void 		liquid_back();
-	void		probe_pos(float z);
-	void		probe_back();
 	
 private:
 	bool		_task_should_exit;		/**< if true, task should exit */
@@ -158,6 +149,8 @@ private:
 	int state ;
 	int counter;
 
+	bool servo_push = false;
+	int servo_loop_cnt = 11;
 	struct {
 
 		param_t act_1_length;
@@ -234,7 +227,7 @@ Humming::Humming() :
 {	
 	for (int i = 0; i < 4; ++i)
 	{
-		actuators_setpoint[i] = -1.0f;
+		actuators_setpoint[i] = 0.0f;
 	}
 	for (int i = 0; i < 4; ++i)
 	{
@@ -409,54 +402,6 @@ Humming::lock_release()
 
 	usleep(1000 * 1000);
 }
-/*
- * new function
- */
-void
-Humming::goto_pos(float x , float y)
-{	
-	actuators_setpoint[0] = x;
-	actuators_setpoint[1] = y;
-	
-	mavlink_log_info(&_mavlink_log_pub, "new setpoint [goto_pos]");
-}
-
-
-void
-Humming::goto_home()
-{	
-	actuators_setpoint[0] = 0.0f;
-	actuators_setpoint[1] = 0.0f;	
-	mavlink_log_info(&_mavlink_log_pub, "new setpoint [goto_home]");
-}
-
-void
-Humming::liquid_pos(float z)
-{
-	actuators_setpoint[2] = z;
-	mavlink_log_info(&_mavlink_log_pub, "new setpoint [liquid_pos]");
-}
-
-void
-Humming::liquid_back()
-{
-	actuators_setpoint[2] = 0.0f;
-	mavlink_log_info(&_mavlink_log_pub, "new setpoint [liquid_back]");
-}
-
-void
-Humming::probe_pos(float z)
-{	
-	actuators_setpoint[3] = z;
-	mavlink_log_info(&_mavlink_log_pub, "new setpoint [probe_pos]");
-}
-
-void
-Humming::probe_back()
-{
-	actuators_setpoint[3] = 0.0f;
-	mavlink_log_info(&_mavlink_log_pub, "new setpoint [probe_back]");
-}
 
 int
 Humming::actuators_publish()
@@ -559,58 +504,16 @@ Humming::task_main()
 				handle_command(&_command);
 				ack_vehicle_command(vehicle_command_ack_pub, _command,vehicle_command_s::VEHICLE_CMD_RESULT_ACCEPTED);
 			}
-			
-			/* DEBUG ONLY */
-			/*orb_check(_control_mode_sub, &updated);
-			if (updated) {
-				orb_copy(ORB_ID(vehicle_control_mode), _control_mode_sub, &_control_mode);
-			}
 
-			if (_control_mode.flag_control_humming_enabled == true){
-				mavlink_log_info(&_mavlink_log_pub, "[humming] flag humming enable is true");
-			}
-			*/
-
-			/* command task 1 */
-			if (task_1){
-				switch(state){
-					case 1:
-						if(actuators_error[0] == 0 && actuators_error[1] == 0){
-							state = 2;
-						}
-						break;
-					case 2:
-						if(actuators_error[2] == 0){
-							state = 3;
-						}
-						break;
-					case 3:
-						if(actuators_error[3] == 0){
-							state = 4;
-						}
-						break;
-					case 4:
-						if(actuators_error[3] == 0){
-							state = 0;
-						}
-						break;
-					default:
-						break;
+			if (servo_push == true)
+			{
+				servo_loop_cnt = servo_loop_cnt - 1;
+				if ( servo_loop_cnt == 0 )
+				{
+					actuators_setpoint[2] = math::constrain(actuators_setpoint[2] + 0.15f,-1.0f,1.0f);
+					servo_push = false;
 				}
 			}
-
-			if(task_point != -1){
-				switch(task_point){
-					case 1:
-						break;
-					case 2:
-						break;
-					default:
-						task_point = -1;
-						break;
-				}
-			}
-
 			for (uint8_t i = 0; i < 4; i++)
 			{
 				float dead_zone = 0.001 ;
@@ -620,7 +523,7 @@ Humming::task_main()
 				else if( actuators_setpoint[i] - _actuators.control[i] < -dead_zone){
 					_actuators.control[i] = _actuators.control[i] - (_params.act_speed[i]*deltaT)/_params.act_length[i] ;
 				}
-				_actuators.control[i] = math::constrain(_actuators.control[i], 0.0f,1.0f);
+				_actuators.control[i] = math::constrain(_actuators.control[i], -1.0f,1.0f);
 			}
 
 			actuators_publish();
@@ -671,105 +574,73 @@ Humming::handle_command(struct vehicle_command_s *cmd)
 		break;
 
 	case vehicle_command_s::VEHICLE_CMD_CUSTOM_1:
-		/* param1 is 1 */
-		if (cmd->param1 > 0.5f && cmd->param1 < 1.5f ){
-			if(_humming_sys_start){
-				goto_home();				
+		/* start humming */
+		if (cmd->param1 > -0.5f && cmd->param1 < 0.5f)
+		{
+			_humming_sys_start = true;
+			mavlink_log_info(&_mavlink_log_pub, "start humming");
+		}
+		/* probe */
+		if (cmd->param1 > 0.5f && cmd->param1 < 1.5f )
+		{
+			/* code */
+			/* positive */
+			if (cmd->param2 > 0.5f && cmd->param2 < 1.5f)
+			{
+				actuators_setpoint[0] = math::constrain( actuators_setpoint[0] + 0.05f,-1.0f,1.0f);
+				mavlink_log_info(&_mavlink_log_pub, "increase probe position");
 			}
-			else{
-				mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
+			/* negative */
+			else if (cmd->param2 > 1.5f && cmd->param2 < 2.5f)
+			{
+				actuators_setpoint[0] = math::constrain( actuators_setpoint[0] - 0.05f,-1.0f,1.0f);
+				mavlink_log_info(&_mavlink_log_pub, "decrease probe position");
 			}
 		}
-		/* param1 is 2 */
-		else if (cmd->param1 > 1.5f && cmd->param1 < 2.5f ){
-			if(_humming_sys_start){
-				liquid_back();				
+		/* couplant */
+		else if (cmd->param1 > 1.5f && cmd->param1 < 2.5f)
+		{
+			/* code */
+			/* positive */
+			if (cmd->param2 > 0.5f && cmd->param2 < 1.5f)
+			{
+				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] + 0.05f,-1.0f,1.0f);
+				mavlink_log_info(&_mavlink_log_pub, "increase syringe position");
 			}
-			else{
-				mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
-			}
-		}
-		/* param1 is 3 */
-		else if (cmd->param1 > 2.5f && cmd->param1 < 3.5f ){
-			if(_humming_sys_start){
-				probe_back();				
-			}
-			else{
-				mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
-			}
-		}
-		else if (cmd->param1 > 3.5f && cmd->param1 < 4.5f){
-			if(!_humming_sys_start){
-				_humming_sys_start = true;
-				goto_home();
-				liquid_back();
-				probe_back();		
-				//mavlink_log_critical(&_mavlink_log_pub, "Humming system started");
-			}
-			else{
-				mavlink_log_critical(&_mavlink_log_pub, "Humming system already has started");
+			/* negative */
+			else if (cmd->param2 > 1.5f && cmd->param2 < 2.5f)
+			{
+				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] - 0.05f,-1.0f,1.0f);
+				mavlink_log_info(&_mavlink_log_pub, "decrease syringe position");
 			}
 		}
-		else if (cmd->param1 > 4.5f && cmd->param1 < 5.5f){
-			if(_humming_sys_start){				
-				float x = cmd->param2;
-				float y = cmd->param3;
-				goto_pos(x , y);
-				//mavlink_log_critical(&_mavlink_log_pub, "goto position %d %d" , (int)(x*1000.0f), (int)(y*1000.0f) );
+		/* servo */
+		else if (cmd->param1 > 2.5f  && cmd->param1 < 3.5f)
+		{
+			/* code */
+			/* positive */
+			if (cmd->param2 > 0.5f && cmd->param2 < 1.5f)
+			{
+				actuators_setpoint[2] = math::constrain(actuators_setpoint[2] + 0.05f,-1.0f,1.0f);
+				mavlink_log_info(&_mavlink_log_pub, "increase servo position");
 			}
-			else{
-				mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
+			/* negative */
+			else if (cmd->param2 > 1.5f && cmd->param2 < 2.5f)
+			{
+				actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.05f,-1.0f,1.0f);
+				mavlink_log_info(&_mavlink_log_pub, "decrease servo position");
+			}
+			/* push */			
+			else if (cmd->param2 > 2.5f && cmd->param2 < 3.5f)
+			{
+				actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
+				mavlink_log_info(&_mavlink_log_pub, "push servo");
+				servo_push = true;
+				servo_loop_cnt = 14;
 			}
 		}
-		else if (cmd->param1 > 5.5f && cmd->param1 < 6.5f){
-			if(_humming_sys_start){				
-				float z = cmd->param4;				
-				liquid_pos(z);
-				//mavlink_log_critical(&_mavlink_log_pub, "liquid position %d" , (int)(z*1000.0f) );
-			}
-			else{
-				mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
-			}
-		}
-		else if (cmd->param1 > 6.5f && cmd->param1 < 7.5f){
-			if(_humming_sys_start){				
-				float z = cmd->param5;				
-				probe_pos(z);
-				//mavlink_log_critical(&_mavlink_log_pub, "probe position %d" , (int)(z*1000.0f) );
-			}
-			else{
-				mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
-			}
-		}		
 		answer_command(cmd, vehicle_command_s::VEHICLE_CMD_RESULT_ACCEPTED);
 		break;
-	case vehicle_command_s::VEHICLE_CMD_CUSTOM_2:
-		/* Direct control mode */
-		if ( (int)(cmd->param1) == 1 )
-		{
-			if( (int)(cmd->param2) >=0 && (int)(cmd->param2) <=5 ){
-				if(_humming_sys_start){
-					actuators_setpoint[(int)(cmd->param2)] = cmd->param3;			
-				}
-				else{
-					mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
-				}
-			}
-		}
-		
-		/* State machine mode */
-		if ( (int)(cmd->param1) == 2)
-		{
-			/* inspection point */
-			if( (int)(cmd->param2) >=0 && (int)(cmd->param2) <=8 ){
-				if(_humming_sys_start){
-					task_point = (int)(cmd->param2) ;		
-				}
-				else{
-					mavlink_log_critical(&_mavlink_log_pub, "please start Humming system first");
-				}
-			}
-		}
 	default:
 		break;
 	}
