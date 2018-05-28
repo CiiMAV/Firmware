@@ -65,3 +65,6 @@ uint8 stab_switch 		 # stabilize switch (only relevant for fixed wings, optional
 uint8 man_switch		 # manual switch (only relevant for fixed wings, optional): _STABILIZED_, MANUAL
 
 uint8 humming_switch		 # humming control 2 position switch : _POSCTL , HUMMING
+uint8 wallcontact_switch		 # wallcontact control 2 position switch : _POSCTL , WALLCONTACT
+
+uint8 humming_slot

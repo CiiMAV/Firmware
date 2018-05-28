@@ -109,6 +109,8 @@ void RCUpdate::update_rc_functions()
 	 * humming
 	 */
 	_rc.function[rc_channels_s::RC_CHANNELS_FUNCTION_HUMMING] = _parameters.rc_map_humming_sw - 1;
+	_rc.function[rc_channels_s::RC_CHANNELS_FUNCTION_WALLCONTACT] = _parameters.rc_map_wallcontact_sw - 1;
+	_rc.function[rc_channels_s::RC_CHANNELS_FUNCTION_HUMMING_SLOT] = _parameters.rc_map_humming_slot_sw - 1;
 
 	_rc.function[rc_channels_s::RC_CHANNELS_FUNCTION_FLAPS] = _parameters.rc_map_flaps - 1;
 
@@ -450,6 +452,10 @@ RCUpdate::rc_poll(const ParameterHandles &parameter_handles)
 			manual.humming_switch = get_rc_sw2pos_position(rc_channels_s::RC_CHANNELS_FUNCTION_HUMMING,
 						_parameters.rc_humming_th,
 						_parameters.rc_humming_inv);
+			manual.wallcontact_switch = get_rc_sw2pos_position(rc_channels_s::RC_CHANNELS_FUNCTION_WALLCONTACT,
+						_parameters.rc_wallcontact_th,
+						_parameters.rc_wallcontact_inv);
+			manual.humming_slot = get_rc_sw3pos_position(rc_channels_s::RC_CHANNELS_FUNCTION_HUMMING_SLOT,0.67f,false,0.33f,false);
 
 			/* publish manual_control_setpoint topic */
 			orb_publish_auto(ORB_ID(manual_control_setpoint), &_manual_control_pub, &manual, &instance,

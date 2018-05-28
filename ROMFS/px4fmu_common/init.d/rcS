@@ -719,7 +719,12 @@ then
 	if param compare SYS_AUTOSTART 4100
 	then
 		mpu6000 -I start
-	if
+	fi
+
+	if param compare SYS_AUTOSTART 12100
+	then
+		mpu6000 -I start
+	fi
 	#
 	# Logging
 	#
@@ -1047,6 +1052,22 @@ mavlink boot_complete
 
 #humming
 if param compare SYS_AUTOSTART 4100
+then
+	led_control blink -n 100 -c purple
+	mavlink stop-all
+	usleep 5000000
+	mavlink start -d /dev/ttyS2
+	usleep 1000000
+	mavlink stop-all
+	micrortps_client start -d /dev/ttyS2 -l -1
+	mavlink start default
+	led_control reset
+
+	mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
+fi
+
+#humming
+if param compare SYS_AUTOSTART 12100
 then
 	led_control blink -n 100 -c purple
 	mavlink stop-all

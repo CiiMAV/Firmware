@@ -403,6 +403,7 @@ main_state_transition(struct vehicle_status_s *status, main_state_t new_main_sta
 
 		break;
 
+	case commander_state_s::MAIN_STATE_WALLCONTACT:
 	case commander_state_s::MAIN_STATE_HUMMING:
 		/* need at minimum altitude estimate */
 		if (status_flags->condition_local_altitude_valid ||
@@ -604,6 +605,7 @@ bool set_nav_state(struct vehicle_status_s *status,
 	reset_link_loss_globals(armed, old_failsafe, data_link_loss_act);
 
 	bool is_humming = false;
+	bool is_wallcontact = false;
 	/* evaluate main state to decide in normal (non-failsafe) mode */
 	switch (internal_state->main_state) {
 	case commander_state_s::MAIN_STATE_ACRO:
@@ -647,6 +649,8 @@ bool set_nav_state(struct vehicle_status_s *status,
 		}
 
 		break;
+	case commander_state_s::MAIN_STATE_WALLCONTACT:
+		is_wallcontact = true;
 	case commander_state_s::MAIN_STATE_HUMMING:
 		is_humming = true;
 			if (rc_lost && is_armed) {
@@ -659,7 +663,9 @@ bool set_nav_state(struct vehicle_status_s *status,
 				 * this enables POSCTL using e.g. flow.
 				 * For fixedwing, a global position is needed. */
 
-			} else if (is_humming == true){
+			} else if (is_humming == true && is_wallcontact == true){
+				status->nav_state = vehicle_status_s::NAVIGATION_STATE_WALLCONTACT;
+			} else if (is_humming == true && is_wallcontact == false){
 				status->nav_state = vehicle_status_s::NAVIGATION_STATE_HUMMING;
 			} else {
 				status->nav_state = vehicle_status_s::NAVIGATION_STATE_POSCTL;

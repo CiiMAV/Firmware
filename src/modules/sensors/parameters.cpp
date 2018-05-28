@@ -99,6 +99,8 @@ int initialize_parameter_handles(ParameterHandles &parameter_handles)
 	 * humming
 	 */
 	parameter_handles.rc_map_humming_sw = param_find("RC_MAP_HUM_SW");
+	parameter_handles.rc_map_wallcontact_sw = param_find("RC_MAP_WALL_SW");
+	parameter_handles.rc_map_humming_slot_sw = param_find("RC_MAP_HUM_SLOT");
 
 	parameter_handles.rc_map_aux1 = param_find("RC_MAP_AUX1");
 	parameter_handles.rc_map_aux2 = param_find("RC_MAP_AUX2");
@@ -136,6 +138,7 @@ int initialize_parameter_handles(ParameterHandles &parameter_handles)
 	 * humming
 	 */
 	parameter_handles.rc_humming_th = param_find("RC_HUM_TH");
+	parameter_handles.rc_wallcontact_th = param_find("RC_WALL_TH");
 
 	/* RC low pass filter configuration */
 	parameter_handles.rc_flt_smp_rate = param_find("RC_FLT_SMP_RATE");
@@ -336,6 +339,14 @@ int update_parameters(const ParameterHandles &parameter_handles, Parameters &par
 		PX4_WARN("%s", paramerr);
 	}
 
+	if (param_get(parameter_handles.rc_map_wallcontact_sw, &(parameters.rc_map_wallcontact_sw)) != OK) {
+		PX4_WARN("%s", paramerr);
+	}
+
+	if (param_get(parameter_handles.rc_map_humming_slot_sw, &(parameters.rc_map_humming_slot_sw)) != OK) {
+		PX4_WARN("%s", paramerr);
+	}
+
 	if (param_get(parameter_handles.rc_map_loiter_sw, &(parameters.rc_map_loiter_sw)) != OK) {
 		PX4_WARN("%s", paramerr);
 	}
@@ -405,6 +416,9 @@ int update_parameters(const ParameterHandles &parameter_handles, Parameters &par
 	param_get(parameter_handles.rc_humming_th, &(parameters.rc_humming_th));
 	parameters.rc_humming_inv = (parameters.rc_humming_th < 0);
 	parameters.rc_humming_th = fabsf(parameters.rc_humming_th);
+	param_get(parameter_handles.rc_wallcontact_th, &(parameters.rc_wallcontact_th));
+	parameters.rc_wallcontact_inv = (parameters.rc_wallcontact_th < 0);
+	parameters.rc_wallcontact_th = fabsf(parameters.rc_wallcontact_th);
 
 	param_get(parameter_handles.rc_return_th, &(parameters.rc_return_th));
 	parameters.rc_return_inv = (parameters.rc_return_th < 0);

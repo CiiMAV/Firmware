@@ -597,6 +597,8 @@ int commander_main(int argc, char *argv[])
 				new_main_state = commander_state_s::MAIN_STATE_POSCTL;
 			} else if (!strcmp(argv[2], "humming")) {
 				new_main_state = commander_state_s::MAIN_STATE_HUMMING;
+			} else if (!strcmp(argv[2], "wallcontact")) {
+				new_main_state = commander_state_s::MAIN_STATE_WALLCONTACT;
 			} else if (!strcmp(argv[2], "auto:mission")) {
 				new_main_state = commander_state_s::MAIN_STATE_AUTO_MISSION;
 			} else if (!strcmp(argv[2], "auto:loiter")) {
@@ -1476,7 +1478,7 @@ int commander_thread_main(int argc, char *argv[])
 	status_flags.condition_local_altitude_valid = false;
 
 	status_flags.condition_humming_valid = false;
-
+	
 	// initialize gps failure to false if circuit breaker enabled
 	if (status_flags.circuit_breaker_engaged_gpsfailure_check) {
 		status_flags.gps_failure = false;
@@ -3523,6 +3525,8 @@ set_main_state_rc(struct vehicle_status_s *status_local, vehicle_global_position
 		 (_last_sp_man.rattitude_switch == sp_man.rattitude_switch) &&
 		 (_last_sp_man.posctl_switch == sp_man.posctl_switch) &&
 		 (_last_sp_man.humming_switch == sp_man.humming_switch) &&
+		 (_last_sp_man.wallcontact_switch == sp_man.wallcontact_switch) &&
+		 (_last_sp_man.humming_slot == sp_man.humming_slot) &&
 		 (_last_sp_man.loiter_switch == sp_man.loiter_switch) &&
 		 (_last_sp_man.mode_slot == sp_man.mode_slot) &&
 		 (_last_sp_man.stab_switch == sp_man.stab_switch) &&
@@ -3603,7 +3607,7 @@ set_main_state_rc(struct vehicle_status_s *status_local, vehicle_global_position
 	}
 
 	/* humming switch overrides main switch */
-	if (sp_man.humming_switch == manual_control_setpoint_s::SWITCH_POS_ON &&
+	if (sp_man.humming_switch == manual_control_setpoint_s::SWITCH_POS_ON && sp_man.humming_slot == manual_control_setpoint_s::SWITCH_POS_NONE &&
 	    (internal_state.main_state == commander_state_s::MAIN_STATE_POSCTL || internal_state.main_state == commander_state_s::MAIN_STATE_ALTCTL) ) {
 		res = main_state_transition(status_local, commander_state_s::MAIN_STATE_HUMMING, main_state_prev, &status_flags, &internal_state);
 
@@ -3615,10 +3619,61 @@ set_main_state_rc(struct vehicle_status_s *status_local, vehicle_global_position
 
 	if (sp_man.humming_switch == manual_control_setpoint_s::SWITCH_POS_ON){
 		mavlink_log_info(&mavlink_log_pub, "[outside]humming_switch pos on");
-		mavlink_log_info(&mavlink_log_pub, "[outside] prev : %d", (int)main_state_prev);
+		//mavlink_log_info(&mavlink_log_pub, "[outside] prev : %d", (int)main_state_prev);
 	}
 	else{
 		mavlink_log_info(&mavlink_log_pub, "[outside]humming_switch pos off");
+	}
+
+	/* wallcontact switch overrides main switch */
+	if (sp_man.wallcontact_switch == manual_control_setpoint_s::SWITCH_POS_ON && sp_man.humming_slot == manual_control_setpoint_s::SWITCH_POS_NONE &&
+	    (internal_state.main_state == commander_state_s::MAIN_STATE_POSCTL || internal_state.main_state == commander_state_s::MAIN_STATE_ALTCTL || internal_state.main_state == commander_state_s::MAIN_STATE_HUMMING) ) {
+		res = main_state_transition(status_local, commander_state_s::MAIN_STATE_WALLCONTACT, main_state_prev, &status_flags, &internal_state);
+
+		if (res != TRANSITION_DENIED) {
+			return res;			
+		} 
+		print_reject_mode(status_local, "WALLCONTACT");
+	}
+
+	if (sp_man.wallcontact_switch == manual_control_setpoint_s::SWITCH_POS_ON){
+		mavlink_log_info(&mavlink_log_pub, "[outside]wallcontact_switch pos on");
+		//mavlink_log_info(&mavlink_log_pub, "[outside] prev : %d", (int)main_state_prev);
+	}
+	else{
+		mavlink_log_info(&mavlink_log_pub, "[outside]wallcontact_switch pos off");
+	}
+
+	if (sp_man.humming_slot == manual_control_setpoint_s::SWITCH_POS_MIDDLE)
+	{
+		if (internal_state.main_state == commander_state_s::MAIN_STATE_POSCTL || internal_state.main_state == commander_state_s::MAIN_STATE_ALTCTL || internal_state.main_state == commander_state_s::MAIN_STATE_WALLCONTACT)
+		{
+			res = main_state_transition(status_local, commander_state_s::MAIN_STATE_HUMMING, main_state_prev, &status_flags, &internal_state);
+			if (res != TRANSITION_DENIED) {
+				return res;			
+			}
+			print_reject_mode(status_local, "HUMMING"); 
+		}
+	}
+	else if(sp_man.humming_slot == manual_control_setpoint_s::SWITCH_POS_ON){
+		if (internal_state.main_state == commander_state_s::MAIN_STATE_POSCTL || internal_state.main_state == commander_state_s::MAIN_STATE_ALTCTL || internal_state.main_state == commander_state_s::MAIN_STATE_HUMMING)
+		{
+			res = main_state_transition(status_local, commander_state_s::MAIN_STATE_WALLCONTACT, main_state_prev, &status_flags, &internal_state);
+			if (res != TRANSITION_DENIED) {
+				return res;			
+			}
+			print_reject_mode(status_local, "WALLCONTACT"); 
+		}
+	}
+
+	if (sp_man.humming_slot == manual_control_setpoint_s::SWITCH_POS_ON){
+		mavlink_log_info(&mavlink_log_pub, "[outside]humming_slot pos on");
+	}
+	else if(sp_man.humming_slot == manual_control_setpoint_s::SWITCH_POS_MIDDLE){
+		mavlink_log_info(&mavlink_log_pub, "[outside]humming_slot pos middle");
+	}
+	else{
+		mavlink_log_info(&mavlink_log_pub, "[outside]humming_slot pos off");
 	}
 
 	/* we know something has changed - check if we are in mode slot operation */
@@ -3712,6 +3767,18 @@ set_main_state_rc(struct vehicle_status_s *status_local, vehicle_global_position
 					/* fall back to position control */
 					new_mode = commander_state_s::MAIN_STATE_POSCTL;
 					print_reject_mode(status_local, "AUTO HOLD");
+					res = main_state_transition(status_local, new_mode, main_state_prev, &status_flags, &internal_state);
+
+					if (res != TRANSITION_DENIED) {
+						break;
+					}
+				}
+
+				if (new_mode == commander_state_s::MAIN_STATE_WALLCONTACT) {
+
+					/* fall back to altitude control */
+					new_mode = commander_state_s::MAIN_STATE_POSCTL;
+					print_reject_mode(status_local, "WALLCONTACT");
 					res = main_state_transition(status_local, new_mode, main_state_prev, &status_flags, &internal_state);
 
 					if (res != TRANSITION_DENIED) {
@@ -4006,6 +4073,7 @@ set_control_mode()
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_STAB:
@@ -4023,6 +4091,7 @@ set_control_mode()
 		/* override is not ok in stabilized mode */
 		control_mode.flag_external_manual_override_ok = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_RATTITUDE:
@@ -4038,6 +4107,7 @@ set_control_mode()
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_ALTCTL:
@@ -4053,6 +4123,22 @@ set_control_mode()
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
+		break;
+	case vehicle_status_s::NAVIGATION_STATE_WALLCONTACT:
+		control_mode.flag_control_manual_enabled = true;
+		control_mode.flag_control_auto_enabled = false;
+		control_mode.flag_control_rates_enabled = true;
+		control_mode.flag_control_attitude_enabled = true;
+		control_mode.flag_control_rattitude_enabled = false;
+		control_mode.flag_control_altitude_enabled = true;
+		control_mode.flag_control_climb_rate_enabled = true;
+		control_mode.flag_control_position_enabled = false;
+		control_mode.flag_control_velocity_enabled = false;
+		control_mode.flag_control_acceleration_enabled = false;
+		control_mode.flag_control_termination_enabled = false;
+		control_mode.flag_control_humming_enabled = true;
+		control_mode.flag_control_wallcontact_enabled =true;
 		break;
 	case vehicle_status_s::NAVIGATION_STATE_HUMMING:
 		control_mode.flag_control_manual_enabled = true;
@@ -4067,6 +4153,7 @@ set_control_mode()
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = true;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 	case vehicle_status_s::NAVIGATION_STATE_POSCTL:
 		control_mode.flag_control_manual_enabled = true;
@@ -4081,6 +4168,7 @@ set_control_mode()
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_AUTO_RTL:
@@ -4107,6 +4195,7 @@ set_control_mode()
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_AUTO_LANDGPSFAIL:
@@ -4122,6 +4211,7 @@ set_control_mode()
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_ACRO:
@@ -4137,6 +4227,7 @@ set_control_mode()
 		control_mode.flag_control_acceleration_enabled = false;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_DESCEND:
@@ -4153,6 +4244,7 @@ set_control_mode()
 		control_mode.flag_control_climb_rate_enabled = true;
 		control_mode.flag_control_termination_enabled = false;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_TERMINATION:
@@ -4169,6 +4261,7 @@ set_control_mode()
 		control_mode.flag_control_climb_rate_enabled = false;
 		control_mode.flag_control_termination_enabled = true;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	case vehicle_status_s::NAVIGATION_STATE_OFFBOARD:
@@ -4209,6 +4302,7 @@ set_control_mode()
 		control_mode.flag_control_altitude_enabled = (!offboard_control_mode.ignore_velocity ||
 			!offboard_control_mode.ignore_position) && !control_mode.flag_control_acceleration_enabled;
 		control_mode.flag_control_humming_enabled = false;
+		control_mode.flag_control_wallcontact_enabled = false;
 		break;
 
 	default:

@@ -15,5 +15,5 @@ uint8 MAIN_STATE_AUTO_FOLLOW_TARGET = 12
 uint8 MAIN_STATE_MAX = 13
 
 uint8 MAIN_STATE_HUMMING = 14
-
+uint8 MAIN_STATE_WALLCONTACT = 15
 uint8 main_state		    	# main state machine
