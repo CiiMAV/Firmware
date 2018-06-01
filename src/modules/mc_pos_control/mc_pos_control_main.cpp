@@ -3205,7 +3205,7 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 				
 				if (_control_mode.flag_control_wallcontact_enabled)
 				{
-					vel_sp += math::constrain(_params.hum_pitch_i*wall_pitch_int,-_params.hum_pitch*0.5f,_params.hum_pitch*0.5f);
+					vel_sp += math::constrain(_params.hum_pitch_i*0.01f*wall_pitch_int,-_params.hum_pitch*0.05f,_params.hum_pitch*0.05f);
 				}
 
 				/* minus because reverse direction */
