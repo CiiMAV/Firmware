@@ -259,6 +259,8 @@ private:
 
 		param_t hum_range_sp;
 
+		param_t mj_p;
+
 		param_t man_curve;
 
 	}		_params_handles;		/**< handles for interesting parameters */
@@ -311,6 +313,8 @@ private:
 
 		float hum_range_sp;
 
+		float mj_p;
+
 		float man_curve;
 	} _params{};
 
@@ -359,6 +363,8 @@ private:
 
 	float humming_pitch_int;
 	float wall_pitch_int;
+	hrt_abstime mj_target_time;
+	float crackle_0;
 
 	bool humming_reset_yaw;
 	bool humming_reseted_yaw;
@@ -591,6 +597,8 @@ MulticopterPositionControl::MulticopterPositionControl() :
 
 	humming_pitch_int = 0.0f;
 	wall_pitch_int    = 0.0f;
+	mj_target_time    = 0.0f;
+	crackle_0         = 0.0f;
 
 	humming_reset_yaw = false ;
 	humming_reseted_yaw = false ;
@@ -648,6 +656,8 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params_handles.hum_flow_rot = param_find("HUM_FLOW_ROT");
 
 	_params_handles.hum_range_sp = param_find("HUM_RANGE_SP");
+
+	_params_handles.mj_p      = param_find("MJ_P");
 
 	_params_handles.man_curve = param_find("MPC_MAN_CURVE");
 	/* fetch initial parameter values */
@@ -740,6 +750,8 @@ MulticopterPositionControl::parameters_update(bool force)
 
 		/* humming */
 		param_get(_params_handles.man_curve, &_params.man_curve);
+
+		param_get(_params_handles.mj_p, &_params.mj_p);
 
 		param_get(_params_handles.hum_range_sp, &_params.hum_range_sp);
 		param_get(_params_handles.hum_pitch, &_params.hum_pitch);
@@ -3166,51 +3178,42 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 		{   
 			/* pitch control part*/
 			if (PX4_ISFINITE(flow_range))
-			{
-				float range_sp = _params.hum_range_sp;
-
-				if (_control_mode.flag_control_wallcontact_enabled)
+			{	
+				if(_control_mode.flag_control_wallcontact_enabled)
 				{
-					range_sp = 0.0f;
+
+					/* integrator */
+					/* integrator acitive when flow_range <= 0.6 meter */
+					float err_int = math::constrain(0.4f+0.2f - flow_range,0.0f,0.25f);
+					humming_pitch_int += err_int * dt;
+
+					float mj_Dt = math::constrain( (float)(mj_target_time - hrt_absolute_time()) ,3000000.0f,10000000.0f)/1000000.0f;
+					
+					/* position feedback */
+					float p_fb = 60.0f * (0.15f - math::constrain(flow_range,-1.5f,1.5f)) / (mj_Dt*mj_Dt*mj_Dt) ;
+					/* velocity feedback */
+					float v_fb = 36.0f * (vel_body(0)-0.05f) / (mj_Dt*mj_Dt) ;
+
+					x = x - math::constrain( _params.mj_p*(p_fb + v_fb) - _params.hum_pitch_i*humming_pitch_int ,-_params.hum_pitch,_params.hum_pitch) ;
 				}
-
-				float range_err = (range_sp - math::constrain(flow_range,-1.5f,1.5f));
-				range_err = math::constrain(range_err,-1.0f,1.0f);
-
-				if (_control_mode.flag_control_wallcontact_enabled)
+				else
 				{
-					float range_err_int =  math::constrain(range_err,-0.1f,0.1f);
-					wall_pitch_int += range_err_int;					
-				}
-				else{
-					wall_pitch_int = 0.0f;
-				}
+					/* set target time */
+					/* target time = current time + 10 second */
+					mj_target_time = hrt_absolute_time()+10000000.0f;
+					
+					float range_sp = _params.hum_range_sp;
+					float range_err = (range_sp - math::constrain(flow_range,-1.5f,1.5f));
+					range_err = math::constrain(range_err,-1.0f,1.0f);
+					float vel_sp = _params.hum_pitch_p*range_err; 
 
-				if (_control_mode.flag_control_wallcontact_enabled)
-				{
-					range_err = range_err*range_err*range_err;
-				}				
-
-				/* integrator */
-				/* integrator acitive when flow_range <= 0.6 meter */
-				float err_int = math::constrain(0.4f+0.2f - flow_range,0.0f,0.25f);
-				humming_pitch_int += err_int;
-				/* reset integrator if wallcontact not enabled */
-				if (!_control_mode.flag_control_wallcontact_enabled)
-				{
+					/* reset integrator if wallcontact not enabled */
 					humming_pitch_int = 0.0f;
-				}
+					/* minus because reverse direction */
+					x = x - math::constrain(vel_sp + _params.hum_pitch_v*vel_body(0),-_params.hum_pitch,_params.hum_pitch) ;
+				}			
 
-				float vel_sp = _params.hum_pitch_p*range_err - _params.hum_pitch_i*humming_pitch_int;  //
-				
-				if (_control_mode.flag_control_wallcontact_enabled)
-				{
-					vel_sp += math::constrain(_params.hum_pitch_i*wall_pitch_int,-_params.hum_pitch*0.5f,_params.hum_pitch*0.5f);
-				}
-
-				/* minus because reverse direction */
-				x = x - math::constrain(vel_sp + _params.hum_pitch_v*vel_body(0),-_params.hum_pitch,_params.hum_pitch) ;
-
+				/* limit again for safety */
 				x = math::constrain(x,-_params.man_tilt_max,_params.man_tilt_max);
 			}
 			else{
