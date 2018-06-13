@@ -364,7 +364,6 @@ private:
 	float humming_pitch_int;
 	float wall_pitch_int;
 	hrt_abstime mj_target_time;
-	float crackle_0;
 
 	bool humming_reset_yaw;
 	bool humming_reseted_yaw;
@@ -598,7 +597,6 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	humming_pitch_int = 0.0f;
 	wall_pitch_int    = 0.0f;
 	mj_target_time    = 0.0f;
-	crackle_0         = 0.0f;
 
 	humming_reset_yaw = false ;
 	humming_reseted_yaw = false ;
@@ -701,7 +699,7 @@ MulticopterPositionControl::cal_optical_flow_vel(float dt)
 	flow_dt = (1e-6f) * (float)_optical_flow.integration_timespan ;
 	math::Vector<3> euler = _R.to_euler() ;  
 
-	flow_range = (1-0.05f)*flow_range_prev+0.05f*fabsf(_optical_flow.ground_distance_m * cosf(euler(1))) ; 
+	flow_range = (1-0.05f)*flow_range_prev+0.05f*fabsf(math::constrain(_optical_flow.ground_distance_m,0.4f,3.0f) * cosf(euler(1))) ; 
 	flow_range_prev = flow_range;
 	//warnx("flow_x: %d",(int)(flow_x*1000.0f));
 	/* rotate form optical flow frame to body frame */
@@ -3184,24 +3182,28 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 
 					/* integrator */
 					/* integrator acitive when flow_range <= 0.6 meter */
-					float err_int = math::constrain(0.4f+0.2f - flow_range,0.0f,0.25f);
+					float err_int = math::constrain(0.4f+0.15f - flow_range,0.0f,0.25f);
 					humming_pitch_int += err_int * dt;
 
-					float mj_Dt = math::constrain( (float)(mj_target_time - hrt_absolute_time()) ,3000000.0f,10000000.0f)/1000000.0f;
-					
-					/* position feedback */
-					float p_fb = 60.0f * (0.15f - math::constrain(flow_range,-1.5f,1.5f)) / (mj_Dt*mj_Dt*mj_Dt) ;
-					/* velocity feedback */
-					float v_fb = 36.0f * (vel_body(0)-0.05f) / (mj_Dt*mj_Dt) ;
+					float p_fb  = 0.0f;
+					float v_fb  = 0.0f;
+
+					if(hrt_absolute_time() - mj_target_time < 5000000.0f){
+						float mj_Dt = math::constrain( (float)(mj_target_time - hrt_absolute_time()) ,7500000.0f,9500000.0f)/1000000.0f;
+						/* position feedback */
+						p_fb = 60.0f * (0.40f - math::constrain(flow_range,-1.5f,1.5f)) / (mj_Dt*mj_Dt*mj_Dt) ;
+						/* velocity feedback */
+						v_fb = 36.0f * (vel_body(0)-0.03f) / (mj_Dt*mj_Dt) ;
+					}
 
 					x = x - math::constrain( _params.mj_p*(p_fb + v_fb) - _params.hum_pitch_i*humming_pitch_int ,-_params.hum_pitch,_params.hum_pitch) ;
 				}
 				else
 				{
 					/* set target time */
-					/* target time = current time + 10 second */
-					mj_target_time = hrt_absolute_time()+10000000.0f;
-					
+					/* target time = current time + 13 second */
+					mj_target_time = hrt_absolute_time()+13000000.0f;
+
 					float range_sp = _params.hum_range_sp;
 					float range_err = (range_sp - math::constrain(flow_range,-1.5f,1.5f));
 					range_err = math::constrain(range_err,-1.0f,1.0f);

@@ -620,13 +620,13 @@ Humming::handle_command(struct vehicle_command_s *cmd)
 			/* positive */
 			if (cmd->param2 > 0.5f && cmd->param2 < 1.5f)
 			{
-				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] + 0.2f,-1.0f,1.0f);
+				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] + 0.02f,-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "increase syringe position");
 			}
 			/* negative */
 			else if (cmd->param2 > 1.5f && cmd->param2 < 2.5f)
 			{
-				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] - 0.2f,-1.0f,1.0f);
+				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] - 0.02f,-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "decrease syringe position");
 			}
 
