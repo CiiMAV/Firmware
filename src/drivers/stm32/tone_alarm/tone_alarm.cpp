@@ -419,6 +419,8 @@ ToneAlarm::ToneAlarm() :
 	_default_tunes[TONE_BARO_WARNING_TUNE] = "MFT255L4gf#fed#d";				// baro warning
 	_default_tunes[TONE_SINGLE_BEEP_TUNE] = "MFT100a8";                             // single beep
 	_default_tunes[TONE_HOME_SET] = "MFT100L4>G#6A#6B#4";
+	_default_tunes[TONE_HUMMING] = "MFT220c4g6g";
+	_default_tunes[TONE_CONTACT] = "MFT220d4a6a";
 
 	_tune_names[TONE_STARTUP_TUNE] = "startup";			// startup tune
 	_tune_names[TONE_ERROR_TUNE] = "error";				// ERROR tone
@@ -435,6 +437,8 @@ ToneAlarm::ToneAlarm() :
 	_tune_names[TONE_BARO_WARNING_TUNE] = "baro_warning";			// baro warning
 	_tune_names[TONE_SINGLE_BEEP_TUNE] = "beep";                    // single beep
 	_tune_names[TONE_HOME_SET] = "home_set";
+	_tune_names[TONE_HUMMING] = "humming";
+	_tune_names[TONE_CONTACT] = "contact";
 }
 
 int

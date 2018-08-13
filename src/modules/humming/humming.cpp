@@ -66,6 +66,7 @@
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/debug_key_value.h>
+#include <uORB/topics/optical_flow.h>
 #include <systemlib/param/param.h>
 #include <systemlib/err.h>
 #include <systemlib/mavlink_log.h>
@@ -131,6 +132,10 @@ private:
 
 	int 	_manual_control_setpoint_sub;
 	struct manual_control_setpoint_s _manual_control_setpoint;
+	struct manual_control_setpoint_s _manual_control_high_cnt;
+
+	int 	_optical_flow_sub;		/**< optical flow front */
+	struct optical_flow_s _optical_flow; 			/**< optical flow */
 
 	int		_params_sub;			/**< parameter updates subscription */
 	
@@ -220,6 +225,9 @@ Humming::Humming() :
 	_control_mode {},
 	_manual_control_setpoint_sub(-1),
 	_manual_control_setpoint {},
+	_manual_control_high_cnt {},
+	_optical_flow_sub(-1),
+	_optical_flow {},
 	_params_sub(-1),
 	_humming_sys_start(false),	
 	_actuators {},
@@ -233,9 +241,12 @@ Humming::Humming() :
 	{
 		actuators_error[i] = -1.0f;
 	}
+	actuators_setpoint[0] = -0.9f;
+	actuators_setpoint[2] = -0.15f;
 	task_1 = false;
 	state = 0;
 	counter = 0;
+	
 	task_point = -1;
 
 
@@ -438,11 +449,17 @@ Humming::task_main()
 
 	_manual_control_setpoint_sub = orb_subscribe(ORB_ID(manual_control_setpoint));	
 
+	_optical_flow_sub = orb_subscribe(ORB_ID(optical_flow));
+
 	orb_advert_t vehicle_command_ack_pub = nullptr;
 
 	pub_dbg = orb_advertise(ORB_ID(debug_key_value), &dbg);
 
 	bool updated = false;
+	bool rc_updated = false;
+	//bool aux1_checked = false;
+	bool aux2_checked = false;
+	int push_count = 0;
 	/* initialize parameters cache */
 	parameters_update();
 
@@ -461,6 +478,7 @@ Humming::task_main()
 	*/
 
 	const unsigned sleeptime_us = 9000;
+	//unsigned int optical_count = 0;
 
 	while (!_task_should_exit) {
 
@@ -503,6 +521,79 @@ Humming::task_main()
 				orb_copy(ORB_ID(vehicle_command), _command_sub, &_command);
 				handle_command(&_command);
 				ack_vehicle_command(vehicle_command_ack_pub, _command,vehicle_command_s::VEHICLE_CMD_RESULT_ACCEPTED);
+			}
+
+			orb_check(_manual_control_setpoint_sub, &rc_updated);
+
+			if (rc_updated)
+			{
+				orb_copy(ORB_ID(manual_control_setpoint), _manual_control_setpoint_sub, &_manual_control_setpoint);
+			}
+
+			if (!updated && rc_updated)
+			{
+				if (_manual_control_setpoint.aux1 < 0.5f)
+				{
+					_manual_control_high_cnt.aux1 = 0.0f;
+				}
+				else if (_manual_control_setpoint.aux1 > 0.5f){
+					_manual_control_high_cnt.aux1++;
+				}
+
+				if (_manual_control_setpoint.aux2 < 0.5f)
+				{
+					_manual_control_high_cnt.aux2 = 0.0f;
+					aux2_checked = false;
+				}
+				else if (_manual_control_setpoint.aux2 > 0.5f){
+					_manual_control_high_cnt.aux2++;
+				}
+			}
+
+			if (!updated)
+			{
+				if (_manual_control_high_cnt.aux1 >= 510.0f && push_count == 2)
+				{
+					mavlink_log_info(&_mavlink_log_pub, "520");
+					actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
+					servo_loop_cnt = 14;
+					servo_push = true;
+					push_count = 3;
+				}
+
+				if (_manual_control_high_cnt.aux1 >= 420.0f && push_count == 1)
+				{
+					mavlink_log_info(&_mavlink_log_pub, "420");
+					actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
+					servo_loop_cnt = 14;
+					servo_push = true;
+					push_count = 2;
+				}
+
+				if (_manual_control_high_cnt.aux1 >= 330.0f && push_count == 0)
+				{
+					mavlink_log_info(&_mavlink_log_pub, "330");
+					actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
+					servo_loop_cnt = 14;
+					servo_push = true;
+					push_count = 1;
+				}
+
+				if (_manual_control_high_cnt.aux1 >= 4.0f)
+				{
+					actuators_setpoint[0] = math::constrain( -0.9f + 0.4f,-1.0f,1.0f);					
+				}
+				else{
+					push_count = 0;
+					actuators_setpoint[0] = -0.9f;
+					actuators_setpoint[0] = math::constrain( actuators_setpoint[0],-1.0f,1.0f);
+				}
+
+				if (_manual_control_high_cnt.aux2 >= 10.0f && !aux2_checked)
+				{
+					aux2_checked = true;
+					actuators_setpoint[1] = math::constrain( actuators_setpoint[1] - 0.1f,-1.0f,1.0f);				
+				}
 			}
 
 			if (servo_push == true)
@@ -594,22 +685,28 @@ Humming::handle_command(struct vehicle_command_s *cmd)
 		if (cmd->param1 > 0.5f && cmd->param1 < 1.5f )
 		{
 			/* code */
-			/* positive */
-			if (cmd->param2 > 0.5f && cmd->param2 < 1.5f)
+			if (cmd->param2 > 2.5f && cmd->param2 < 3.5f)
 			{
-				actuators_setpoint[0] = math::constrain( actuators_setpoint[0] + 0.2f,-1.0f,1.0f);
+				actuators_setpoint[0] = math::constrain( -0.9f + 0.425f,-1.0f,1.0f);
+				mavlink_log_info(&_mavlink_log_pub, "max probe position");
+			}
+			/* positive */
+			else if (cmd->param2 > 0.5f && cmd->param2 < 1.5f)
+			{
+				actuators_setpoint[0] = math::constrain( actuators_setpoint[0] + 0.1f,-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "increase probe position");
 			}
 			/* negative */
 			else if (cmd->param2 > 1.5f && cmd->param2 < 2.5f)
 			{
-				actuators_setpoint[0] = math::constrain( actuators_setpoint[0] - 0.2f,-1.0f,1.0f);
+				actuators_setpoint[0] = math::constrain( actuators_setpoint[0] - 0.1f,-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "decrease probe position");
 			}
 
 			else
 			{
-				actuators_setpoint[0] = math::constrain( 0.0f,-1.0f,1.0f);
+				actuators_setpoint[0] = -0.9f;
+				actuators_setpoint[0] = math::constrain( actuators_setpoint[0],-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "reset probe position");
 			}
 		}
@@ -620,13 +717,13 @@ Humming::handle_command(struct vehicle_command_s *cmd)
 			/* positive */
 			if (cmd->param2 > 0.5f && cmd->param2 < 1.5f)
 			{
-				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] + 0.02f,-1.0f,1.0f);
+				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] - 0.1f,-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "increase syringe position");
 			}
 			/* negative */
 			else if (cmd->param2 > 1.5f && cmd->param2 < 2.5f)
 			{
-				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] - 0.02f,-1.0f,1.0f);
+				actuators_setpoint[1] = math::constrain( actuators_setpoint[1] + 0.1f,-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "decrease syringe position");
 			}
 
@@ -643,13 +740,13 @@ Humming::handle_command(struct vehicle_command_s *cmd)
 			/* positive */
 			if (cmd->param2 > 0.5f && cmd->param2 < 1.5f)
 			{
-				actuators_setpoint[2] = math::constrain(actuators_setpoint[2] + 0.15f,-1.0f,1.0f);
+				actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "increase servo position");
 			}
 			/* negative */
 			else if (cmd->param2 > 1.5f && cmd->param2 < 2.5f)
 			{
-				actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
+				actuators_setpoint[2] = math::constrain(actuators_setpoint[2] + 0.15f,-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "decrease servo position");
 			}
 			/* push */			
@@ -663,7 +760,8 @@ Humming::handle_command(struct vehicle_command_s *cmd)
 
 			else
 			{
-				actuators_setpoint[2] = math::constrain( 0.0f,-1.0f,1.0f);
+				actuators_setpoint[2] = -0.15f;
+				actuators_setpoint[2] = math::constrain( actuators_setpoint[2],-1.0f,1.0f);
 				mavlink_log_info(&_mavlink_log_pub, "reset servo position");
 			}
 		}

@@ -3066,6 +3066,9 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 			_att_sp.yaw_body = _wrap_pi(_yaw + atanf((float)_raspi.value/120.0f));
 		}		
 	}
+	else if( flow_range >= 0.25f && flow_range <= 0.75f && !_vehicle_land_detected.landed){
+		//mavlink_log_info(&_mavlink_log_pub, "alignment sensors fail");
+	}
 	
 	/* reset yaw_sp every 10 seconds */
 	/*
@@ -3195,9 +3198,11 @@ MulticopterPositionControl::generate_attitude_setpoint(float dt)
 						p_fb = 60.0f * (0.20f - math::constrain(flow_range,-1.5f,1.5f)) / (mj_Dt*mj_Dt*mj_Dt) ;
 						/* velocity feedback */
 						v_fb = 36.0f * (vel_body(0)-0.1f) / (mj_Dt*mj_Dt) ;
+						x = x - math::constrain( _params.mj_p*(p_fb + v_fb) - _params.hum_pitch_i*humming_pitch_int ,-_params.hum_pitch,_params.hum_pitch) ;
 					}
-
-					x = x - math::constrain( _params.mj_p*(p_fb + v_fb) - _params.hum_pitch_i*humming_pitch_int ,-_params.hum_pitch,_params.hum_pitch) ;
+					else{
+						x = x - math::constrain( _params.mj_p*(p_fb + v_fb) - 2.0f*_params.hum_pitch_i*humming_pitch_int ,-_params.hum_pitch,_params.hum_pitch) ;
+					}					
 				}
 				else
 				{

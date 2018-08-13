@@ -2902,7 +2902,18 @@ int commander_thread_main(int argc, char *argv[])
 
 			/* play tune on mode change only if armed, blink LED always */
 			if (main_res == TRANSITION_CHANGED || first_rc_eval) {
-				tune_positive(armed.armed);
+				/* tune for humming */
+				if (internal_state.main_state == commander_state_s::MAIN_STATE_WALLCONTACT)
+				{
+					set_tune_override(TONE_CONTACT);
+				}
+				else if (internal_state.main_state == commander_state_s::MAIN_STATE_HUMMING)
+				{
+					set_tune_override(TONE_HUMMING);
+				}
+				else{
+					tune_positive(armed.armed);
+				}
 				main_state_changed = true;
 
 			} else if (main_res == TRANSITION_DENIED) {
