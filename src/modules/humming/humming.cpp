@@ -552,27 +552,27 @@ Humming::task_main()
 
 			if (!updated)
 			{
-				if (_manual_control_high_cnt.aux1 >= 510.0f && push_count == 2)
+				if (_manual_control_high_cnt.aux1 >= 300.0f && push_count == 2)
 				{
-					mavlink_log_info(&_mavlink_log_pub, "520");
+					mavlink_log_info(&_mavlink_log_pub, "300");
 					actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
 					servo_loop_cnt = 14;
 					servo_push = true;
 					push_count = 3;
 				}
 
-				if (_manual_control_high_cnt.aux1 >= 420.0f && push_count == 1)
+				if (_manual_control_high_cnt.aux1 >= 200.0f && push_count == 1)
 				{
-					mavlink_log_info(&_mavlink_log_pub, "420");
+					mavlink_log_info(&_mavlink_log_pub, "200");
 					actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
 					servo_loop_cnt = 14;
 					servo_push = true;
 					push_count = 2;
 				}
 
-				if (_manual_control_high_cnt.aux1 >= 330.0f && push_count == 0)
+				if (_manual_control_high_cnt.aux1 >= 100.0f && push_count == 0)
 				{
-					mavlink_log_info(&_mavlink_log_pub, "330");
+					mavlink_log_info(&_mavlink_log_pub, "100");
 					actuators_setpoint[2] = math::constrain(actuators_setpoint[2] - 0.15f,-1.0f,1.0f);
 					servo_loop_cnt = 14;
 					servo_push = true;
